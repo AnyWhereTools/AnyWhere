@@ -1,9 +1,9 @@
 import AppKit
 import FinderSync
-import MenuMateCore
+import AnyWhereCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    static let extensionBundleID = "com.menumate.app.FinderExtension"
+    static let extensionBundleID = "com.anywhere.app.FinderExtension"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Notifier.requestAuthorizationOnce()
@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let pk = ShellRunner.run("/usr/bin/pluginkit", ["-m", "-i", extensionBundleID], timeout: 5)
         // pluginkit -m 输出行首:`+` 启用 / `-` 停用 / `!` 异常;空=未注册。
         let pkEnabled = pk.stdout.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("+")
-        NSLog("[MenuMate][onboarding] isExtensionEnabled=\(api) pluginkit=\(pkEnabled) onboardingDone=\(UserDefaults.standard.bool(forKey: "onboardingDone")) pkRaw=\(pk.stdout.trimmingCharacters(in: .whitespacesAndNewlines))")
+        NSLog("[AnyWhere][onboarding] isExtensionEnabled=\(api) pluginkit=\(pkEnabled) onboardingDone=\(UserDefaults.standard.bool(forKey: "onboardingDone")) pkRaw=\(pk.stdout.trimmingCharacters(in: .whitespacesAndNewlines))")
         return api || pkEnabled
     }
 }

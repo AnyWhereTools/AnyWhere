@@ -1,5 +1,5 @@
 import AppKit
-import MenuMateCore
+import AnyWhereCore
 
 struct DuplicateGroup: Identifiable {
     let id: String        // bundleID

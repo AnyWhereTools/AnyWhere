@@ -1,9 +1,9 @@
 import SwiftUI
-import MenuMateCore
+import AnyWhereCore
 
 // 「一键整理」审查 sheet:列出别的来源塞进右键菜单的项(系统服务 + 第三方 Finder 扩展),
 // 第三方项预勾,确认后批量隐藏(走现有 setEnabled),记录精确改动集合供会话级撤销。
-// 绝不列、不动 MenuMate 自己的动作;MenuMate 自己的扩展(com.menumate.*)也被 isThirdParty 排除。
+// 绝不列、不动 AnyWhere 自己的动作;AnyWhere 自己的扩展(com.anywhere.*)也被 isThirdParty 排除。
 struct DeclutterSheet: View {
     @ObservedObject var servicesManager: ServicesManager
     @ObservedObject var extensionManager: ExtensionManager
@@ -41,15 +41,15 @@ struct DeclutterSheet: View {
                 AppIcon("wand.and.sparkles", size: 34, hue: .teal)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(String(localized: "declutter.title")).font(.system(size: 14.5, weight: .semibold))
-                    Text(String(localized: "declutter.subtitle")).font(.system(size: 11.5)).foregroundStyle(MMColor.label2)
+                    Text(String(localized: "declutter.subtitle")).font(.system(size: 11.5)).foregroundStyle(AWColor.label2)
                 }
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 20).padding(.top, 16)
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
-                MMButton(String(localized: "declutter.selectAll"), size: .sm) { selectAll() }
-                MMButton(String(localized: "declutter.selectNone"), size: .sm) { selectedServices = []; selectedExts = [] }
+                AWButton(String(localized: "declutter.selectAll"), size: .sm) { selectAll() }
+                AWButton(String(localized: "declutter.selectNone"), size: .sm) { selectedServices = []; selectedExts = [] }
             }
             .padding(.horizontal, 20).padding(.top, 10)
 
@@ -74,7 +74,7 @@ struct DeclutterSheet: View {
                         }
                     }
                     if thirdPartyServices.isEmpty && thirdPartyExts.isEmpty && systemServices.isEmpty {
-                        Text(String(localized: "declutter.empty")).font(.system(size: 12)).foregroundStyle(MMColor.label3)
+                        Text(String(localized: "declutter.empty")).font(.system(size: 12)).foregroundStyle(AWColor.label3)
                     }
                 }
                 .padding(.horizontal, 20).padding(.vertical, 12)
@@ -93,31 +93,31 @@ struct DeclutterSheet: View {
 
     @ViewBuilder private var footer: some View {
         VStack(spacing: 0) {
-            Rectangle().fill(MMColor.separator).frame(height: 0.5)
+            Rectangle().fill(AWColor.separator).frame(height: 0.5)
             HStack(spacing: 10) {
                 if applied {
                     Image(systemName: rejectedExts.isEmpty ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(rejectedExts.isEmpty ? MMColor.green : MMColor.orange)
+                        .foregroundStyle(rejectedExts.isEmpty ? AWColor.green : AWColor.orange)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(String(format: String(localized: "declutter.result"), hiddenCount))
                             .font(.system(size: 12))
                         if !rejectedExts.isEmpty {
                             Text(String(format: String(localized: "declutter.rejectedCount"), rejectedExts.count))
-                                .font(.system(size: 10)).foregroundStyle(MMColor.red)
+                                .font(.system(size: 10)).foregroundStyle(AWColor.red)
                         } else if let err = servicesManager.lastError {
-                            Text(err).font(.system(size: 10)).foregroundStyle(MMColor.red).lineLimit(1).truncationMode(.tail)
+                            Text(err).font(.system(size: 10)).foregroundStyle(AWColor.red).lineLimit(1).truncationMode(.tail)
                         }
                     }
                     Spacer(minLength: 0)
                     if !lastServices.isEmpty || !lastExts.isEmpty {
-                        MMButton(String(localized: "declutter.undo"), size: .sm) { undo() }
+                        AWButton(String(localized: "declutter.undo"), size: .sm) { undo() }
                     }
-                    MMButton(String(localized: "declutter.done"), kind: .primary, size: .sm) { onClose() }
+                    AWButton(String(localized: "declutter.done"), kind: .primary, size: .sm) { onClose() }
                 } else {
-                    Text(String(localized: "declutter.applyHint")).font(.system(size: 11)).foregroundStyle(MMColor.label3)
+                    Text(String(localized: "declutter.applyHint")).font(.system(size: 11)).foregroundStyle(AWColor.label3)
                     Spacer(minLength: 0)
-                    MMButton(String(localized: "declutter.cancel"), size: .sm) { onClose() }
-                    MMButton(String(format: String(localized: "declutter.apply"), selectedCount), kind: .primary, size: .sm) { apply() }
+                    AWButton(String(localized: "declutter.cancel"), size: .sm) { onClose() }
+                    AWButton(String(format: String(localized: "declutter.apply"), selectedCount), kind: .primary, size: .sm) { apply() }
                         .disabled(selectedCount == 0)
                         .opacity(selectedCount == 0 ? 0.4 : 1)
                 }
@@ -129,13 +129,13 @@ struct DeclutterSheet: View {
     @ViewBuilder private func group<Content: View>(_ title: String, recommended: Bool, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(MMColor.label2)
+                Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(AWColor.label2)
                 if recommended { Badge(String(localized: "declutter.recommendedHidden"), tone: .orange) }
             }
             VStack(spacing: 0) { content() }
-                .background(MMColor.card)
+                .background(AWColor.card)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(MMColor.hairline, lineWidth: 0.5))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(AWColor.hairline, lineWidth: 0.5))
         }
     }
 
@@ -155,9 +155,9 @@ struct DeclutterSheet: View {
         HStack(spacing: 8) {
             Toggle("", isOn: checked).toggleStyle(.checkbox).labelsHidden()
             VStack(alignment: .leading, spacing: 1) {
-                Text(name).font(.system(size: 12)).foregroundStyle(MMColor.label).lineLimit(1)
+                Text(name).font(.system(size: 12)).foregroundStyle(AWColor.label).lineLimit(1)
                 if !subtitle.isEmpty {
-                    Text(subtitle).font(.system(size: 10, design: .monospaced)).foregroundStyle(MMColor.label3).lineLimit(1).truncationMode(.middle)
+                    Text(subtitle).font(.system(size: 10, design: .monospaced)).foregroundStyle(AWColor.label3).lineLimit(1).truncationMode(.middle)
                 }
             }
             Spacer(minLength: 0)

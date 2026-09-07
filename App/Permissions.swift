@@ -1,4 +1,4 @@
-// Permissions.swift — 一次性把 MenuMate 需要的系统权限申请掉(在首次引导里预请求,使用前就授权)。
+// Permissions.swift — 一次性把 AnyWhere 需要的系统权限申请掉(在首次引导里预请求,使用前就授权)。
 //
 // macOS 的 TCC 对每类权限只问一次:授权后永久生效、永不再弹;拒绝后也不再自动弹,
 // 需用户去「系统设置」改。所以这里的目标是"在使用前主动触发那一次弹窗",而不是反复请求。
@@ -20,7 +20,7 @@ enum Permissions {
     /// 当前是否已被授予辅助功能(可读,实时)。
     static var accessibilityTrusted: Bool { AXIsProcessTrusted() }
 
-    /// 触发辅助功能授权:未授权时弹系统框(含"打开系统设置"),并把 MenuMate 加入列表。已授权则直接返回 true。
+    /// 触发辅助功能授权:未授权时弹系统框(含"打开系统设置"),并把 AnyWhere 加入列表。已授权则直接返回 true。
     @discardableResult
     static func requestAccessibility() -> Bool {
         let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
@@ -35,9 +35,9 @@ enum Permissions {
 
     // MARK: 自动化(Finder + System Events)
 
-    /// 向 Finder 与 System Events 各发一个无害 Apple Event,触发一次性「MenuMate 想要控制 X」授权框。
+    /// 向 Finder 与 System Events 各发一个无害 Apple Event,触发一次性「AnyWhere 想要控制 X」授权框。
     /// 导航脚本运行期就是用 osascript 控制这两者(Finder 同窗导航 / System Events 发 ⌘↑),
-    /// 故这里也用 osascript 子进程预约,保证授权主体(MenuMate)与运行期完全一致。
+    /// 故这里也用 osascript 子进程预约,保证授权主体(AnyWhere)与运行期完全一致。
     /// 每次 executeAndReturnError 同步阻塞等用户回应,故放后台线程顺序触发。
     static func primeAutomation() {
         DispatchQueue.global(qos: .userInitiated).async {

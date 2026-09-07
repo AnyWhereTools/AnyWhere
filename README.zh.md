@@ -1,27 +1,23 @@
-# MenuMate
+# AnyWhere
 
 **完全掌控 macOS Finder 的右键菜单。**
 
 [English](README.md) · 简体中文
 
-MenuMate 是一个**脚本优先**、开源(MIT)的菜单栏应用:加你自己的右键动作、管理别的工具碰不到的系统菜单项、安装社区「扩展包」——而且不会反复弹授权框。以 Developer ID 形式分发(非沙盒主 App + 沙盒 Finder Sync 扩展),最低 macOS 13 Ventura,界面支持 **English / 简体中文**。
-
-<p align="center">
-  <img src="docs/screenshots/menu-hub-zh.png" width="760" alt="MenuMate —— 整个右键菜单集中管理">
-</p>
+AnyWhere 是一个**脚本优先**、开源(MIT)的菜单栏应用:加你自己的右键动作、管理别的工具碰不到的系统菜单项、安装社区「扩展包」——而且不会反复弹授权框。以 Developer ID 形式分发(非沙盒主 App + 沙盒 Finder Sync 扩展),最低 macOS 13 Ventura,界面支持 **English / 简体中文**。
 
 ---
 
-## 为什么用 MenuMate
+## 为什么用 AnyWhere
 
-市面上的右键工具(右键超人 / MouseBoost / 超级右键 / Service Station 等)都走 App Store 沙盒,**只能管理自己注入的菜单项**。MenuMate 走 Developer ID、跳出沙盒,因此能做到沙盒结构上做不到的事:
+市面上的右键工具(右键超人 / MouseBoost / 超级右键 / Service Station 等)都走 App Store 沙盒,**只能管理自己注入的菜单项**。AnyWhere 走 Developer ID、跳出沙盒,因此能做到沙盒结构上做不到的事:
 
-| 能力 | 沙盒竞品 | MenuMate |
+| 能力 | 沙盒竞品 | AnyWhere |
 |------|---------|---------|
 | 注入自定义脚本动作 | 部分支持 | ✓ 脚本优先,全可配置 |
 | 开关系统 Quick Actions / 服务 | ✗ | ✓ 读写 `pbs` 域 |
 | 开关第三方 Finder 扩展 | ✗ | ✓ `pluginkit` |
-| 安装社区扩展包(任意 git 仓库) | ✗ | ✓ 见 [扩展包规范](docs/pack-spec.md) |
+| 安装扩展包(Git 仓库或本地文件夹) | ✗ | ✓ 见 [扩展包规范](docs/pack-spec.md) |
 
 **核心理念是脚本优先**:连内置能力都是可编辑的 zsh 脚本——预设 = 出厂脚本,随时改、删、恢复。
 
@@ -31,25 +27,43 @@ MenuMate 是一个**脚本优先**、开源(MIT)的菜单栏应用:加你自己�
 
 ### 脚本优先、极致可配置的自定义动作
 
-每个动作都是 zsh 脚本(或内联片段,或「用 App 打开」)。可自定义图标(SF Symbol + 配色,或导入自己的图片),并按文件类型限定作用范围——勾选友好分类(图片/视频/音频/PDF/文本/源代码/压缩包/应用)或直接填 UTI。
+每个动作都是 zsh 脚本(或内联片段,或「用 App 打开」)。可自定义图标(SF Symbol + 配色,或导入自己的图片)，选择作用对象（文件、文件夹、目录空白处），并限制选中数量。
 
-<p align="center"><img src="docs/screenshots/editor-zh.png" width="420" alt="动作编辑器"></p>
+自建动作通过**普通文件后缀**限定文件类型，例如 `xlog, log, tar.gz`。多个后缀用逗号分隔，允许带前导点，**不区分大小写**；留空不限。此输入框不支持通配符或正则。
+
+已有 UTI 规则继续保留；修改后缀或点击「改用后缀匹配」后替换旧规则，修改标题、图标等其他字段不会改变原有匹配行为。
 
 ### 管理「整个」右键菜单,不只是自己的项
 
-一屏按真实样子预览右键菜单,带「模拟对象」开关(图片/文件/文件夹/空白处),所见即所得。按可控程度分区:**●** 自有与扩展包动作(排序、编辑、启停、删除),**◐** 系统快速操作/服务(隐藏),**○** 第三方扩展(开关)。
+一屏预览右键菜单，带「模拟对象」开关（图片/文件/文件夹/空白处）。分类预览近似判断文件类型，文件名正则需在 Finder 中用真实文件验证。按可控程度分区：**●** 自有与扩展包动作（排序、启停；扩展包脚本与匹配规则只读），**◐** 系统快速操作/服务（隐藏），**○** 第三方扩展（开关）。
 
 ### 切换终端/编辑器,无需改脚本
 
 在「通用」里选默认终端和编辑器;「在终端/编辑器打开」预设通过注入的环境变量遵从你的选择,不用动脚本。
 
-### 社区扩展包
+### 扩展包：Git 与本地导入
 
-任意符合规范的 git 仓库都是扩展包。按 URL 导入,MenuMate **只读克隆**、强制你逐脚本审查,动作默认**禁用**直到你逐个启用。见[扩展包规范](docs/pack-spec.md)与[示例包](examples/example-pack/)。
+扩展包是根目录包含 `manifest.json` 和配套脚本的文件夹。在「扩展包 → 导入」粘贴 Git URL / `owner/repo`，或点击「选择本地文件夹…」，**本地包无需创建 Git 仓库**。AnyWhere 克隆或复制整个包，展示脚本和附带文件（包括 CLI）供审阅，导入后的动作默认**禁用**，由你逐个启用。
+
+本地导入保留可执行权限，安装的是独立副本；移动或修改原目录不影响已安装动作。本地包不检查 Git 更新，同一来源不可重复导入；需要替换时，先卸载旧包，再导入更新后的文件夹。
+
+### 插件配置：填写一次，后续自动使用
+
+扩展包可声明**文本、密码、开关、下拉选择**配置项。在「右键菜单」选中包内动作，在右侧「插件配置」填写并点击「保存配置」，后续执行通过 `ANYWHERE_CONFIG_<KEY>` 自动传给脚本，无需每次输入。「清除配置」会删除已保存的值并恢复默认值。
+
+密码保存在 macOS 钥匙串，普通配置独立于扩展包保存。包更新时，动作 ID 和字段 key 不变即可保留配置。卸载默认保留配置，方便从同一来源重新导入；如需删除配置，请先清除再卸载。
+
+### 插件匹配：UTI、后缀与文件名正则
+
+包作者可声明 UTI 类型匹配（`utis`）、忽略大小写的普通后缀（`extensions`）和完整文件名正则（`filenamePattern`，默认忽略大小写）。每个选中项须**命中任一 UTI 或后缀**，并额外满足所声明的正则；两个类型列表均为空时不限类型。**多选须全部符合**，作用对象限制仍然生效。
+
+插件配置使用清单 **schemaVersion 2 或更高版本**；后缀、正则使用 **3**。详见[扩展包规范](docs/pack-spec.md)、[基础示例包](examples/example-pack/)和 [Xlog Decoder 包](examples/xlog-decoder-pack/)。
+
+体验 Xlog 解密：本地导入 `examples/xlog-decoder-pack/`，启用「解密 Xlog」，在动作配置中保存私钥（未加密日志留空），再到 Finder 选中 `.xlog` / `.XLOG` 文件执行。日志输出在原文件旁。包内附带 Intel / Apple Silicon 独立 CLI，**无需安装 XlogDecoder.app**。
 
 ### 双语 & 不反复弹窗
 
-完整 **English / 简体中文** 界面(String Catalog,加语言只需加一列翻译)。因为扩展零文件访问、无 App Group 容器,MenuMate 规避了 macOS 14/15「想访问其他 App 数据」的反复弹窗;少量必需权限在引导里**一次性**请求。
+完整 **English / 简体中文** 界面(String Catalog,加语言只需加一列翻译)。因为扩展零文件访问、无 App Group 容器,AnyWhere 规避了 macOS 14/15「想访问其他 App 数据」的反复弹窗;少量必需权限在引导里**一次性**请求。
 
 ---
 
@@ -64,7 +78,8 @@ MenuMate 是一个**脚本优先**、开源(MIT)的菜单栏应用:加你自己�
 | `cut.sh` / `paste.sh` | 剪切 / 粘贴到此处 | 经数据目录 cutbuffer 移动 |
 | `open-parent.sh` / `open-enclosing.sh` | 前往上一层级目录 | 在当前 Finder 窗口内上一层;浏览器上传框里发 `⌘↑` |
 
-专用能力作为**可选扩展包**(在 **扩展包 › 浏览社区包** 安装),也是生态的真实示例:
+专用能力可通过**可选扩展包**添加。以下是上游参考项目，导入前需将脚本适配为
+`ANYWHERE_*` 环境变量；AnyWhere 的社区发现使用 `anywhere-pack` 标签：
 
 - **[Developer Pack](https://github.com/Hibrielle/menumate-dev-pack)** —— 在终端/编辑器打开(遵从你的默认终端/编辑器)。
 - **[Image Pack](https://github.com/Hibrielle/menumate-image-pack)** —— 图片转换 ▸ png/jpeg/heic/tiff。
@@ -78,26 +93,31 @@ MenuMate 是一个**脚本优先**、开源(MIT)的菜单栏应用:加你自己�
 
 ```bash
 make bootstrap   # 安装 xcodegen + 拷贝本地签名配置
-make gen         # project.yml → MenuMate.xcodeproj(已 gitignore)
+make gen         # project.yml → AnyWhere.xcodeproj(已 gitignore)
 make test        # 运行 Core 单元测试
 make build       # 调试构建
 make run         # 构建并启动
 ```
 
-随后启用 Finder 扩展(引导会带你到系统设置,或 `pluginkit -e use -i com.menumate.app.FinderExtension`),并完成一次性授权。签名+公证的发布版见 [docs/RELEASING.md](docs/RELEASING.md)。
+随后启用 Finder 扩展(引导会带你到系统设置,或 `pluginkit -e use -i com.anywhere.app.FinderExtension`),并完成一次性授权。签名+公证的发布版见 [docs/RELEASING.md](docs/RELEASING.md)。
 
 ## 脚本环境契约
+
+AnyWhere 使用独立的 `com.anywhere.app` 标识，配置保存在
+`~/Library/Application Support/AnyWhere/`。上游应用的既有数据和权限保持原样，
+不会自动迁移；导入脚本需使用下方的 `ANYWHERE_*` 环境变量。
 
 每个脚本(预设或扩展包)以 `/bin/zsh` 执行,注入:
 
 | 变量 / 参数 | 含义 |
 |----------------|------|
 | `$1 … $n` | 选中项的绝对路径(空白处动作传容器路径) |
-| `MENUMATE_PATHS` | 全部路径,换行分隔 |
-| `MENUMATE_VARIANT` | 选中的子菜单值(如 `jpeg`) |
-| `MENUMATE_TEMPLATES` / `MENUMATE_DATA` | 模板目录 / 数据目录 |
-| `MENUMATE_TERMINAL` / `MENUMATE_EDITOR` | 你选的默认终端 / 编辑器 bundle id |
-| `MENUMATE_SCRIPT` | 脚本自身绝对路径(`${0:A:h}` 即其所在目录,可定位同级文件/二进制) |
+| `ANYWHERE_PATHS` | 全部路径,换行分隔 |
+| `ANYWHERE_VARIANT` | 选中的子菜单值(如 `jpeg`) |
+| `ANYWHERE_TEMPLATES` / `ANYWHERE_DATA` | 模板目录 / 数据目录 |
+| `ANYWHERE_TERMINAL` / `ANYWHERE_EDITOR` | 你选的默认终端 / 编辑器 bundle id |
+| `ANYWHERE_SCRIPT` | 脚本自身绝对路径；`${0:A:h}` 是脚本目录，脚本位于 `actions/` 下时 `${0:A:h:h}` 是包根目录 |
+| `ANYWHERE_CONFIG_<KEY>` | 当前包动作声明的配置项的已保存值或默认值；开关为 `"true"` / `"false"` |
 | 退出码 `0` | 成功;stdout 首行作为摘要 |
 | 退出码非 `0` | 失败;stderr 进「最近执行」+ 通知 |
 
@@ -107,17 +127,17 @@ make run         # 构建并启动
 
 | Target | 形态 | 沙盒 | 职责 |
 |--------|------|------|------|
-| MenuMate | SwiftUI 菜单栏 App(`LSUIElement`) | 否 | 配置、动作执行、系统菜单管理、扩展包 |
+| AnyWhere | SwiftUI 菜单栏 App(`LSUIElement`) | 否 | 配置、动作执行、系统菜单管理、扩展包 |
 | FinderExtension | `FIFinderSync` 扩展 | 是 | 画菜单、转发点击 |
-| MenuMateCore | 本地 Swift Package | — | 模型、配置编解码、规则匹配(单测覆盖) |
+| AnyWhereCore | 本地 Swift Package | — | 模型、配置编解码、规则匹配(单测覆盖) |
 
 扩展**不读任何文件**:菜单数据由主 App 经 `DistributedNotificationCenter` 分块推送,无 App Group 容器——这是消除反复授权弹窗的关键。
 
 ## 文档与贡献
 
-- [扩展包规范](docs/pack-spec.md) · [示例包](examples/example-pack/)
+- [扩展包规范](docs/pack-spec.md) · [基础示例包](examples/example-pack/) · [Xlog Decoder 包](examples/xlog-decoder-pack/)
 - [贡献指南](CONTRIBUTING.md) · [发布流程](docs/RELEASING.md)
-- Core 127 个单测 + 预设脚本测试 + App/扩展编译检查在每次 push 由 CI 运行(`.github/workflows/ci.yml`)
+- Core 单元测试 + 预设脚本测试 + App/扩展编译检查在推送到 `main` 和提交 Pull Request 时由 CI 运行（`.github/workflows/ci.yml`）。
 
 ## 已知限制
 

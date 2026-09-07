@@ -13,10 +13,10 @@ struct OpenWithTab: View {
                 HStack(alignment: .top, spacing: 12) {
                     Text(String(localized: "openWith.intro"))
                         .font(.system(size: 12))
-                        .foregroundStyle(MMColor.label2)
+                        .foregroundStyle(AWColor.label2)
                         .lineSpacing(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    MMButton(String(localized: "openWith.scan"), systemImage: "magnifyingglass", kind: .primary) {
+                    AWButton(String(localized: "openWith.scan"), systemImage: "magnifyingglass", kind: .primary) {
                         cleaner.scan()
                     }
                     .disabled(cleaner.scanning)
@@ -30,7 +30,7 @@ struct OpenWithTab: View {
                             .scaleEffect(0.7)
                         Text(String(localized: "openWith.scanning"))
                             .font(.system(size: 11.5))
-                            .foregroundStyle(MMColor.label2)
+                            .foregroundStyle(AWColor.label2)
                     }
                 }
 
@@ -42,7 +42,7 @@ struct OpenWithTab: View {
                 if !cleaner.scanning && cleaner.groups.isEmpty {
                     Text(String(localized: "openWith.emptyState"))
                         .font(.system(size: 12))
-                        .foregroundStyle(MMColor.label3)
+                        .foregroundStyle(AWColor.label3)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 2)
                 }
@@ -56,7 +56,7 @@ struct OpenWithTab: View {
             .padding(.horizontal, 18)
             .padding(.vertical, 14)
         }
-        .background(MMColor.content)
+        .background(AWColor.content)
         .onAppear { cleaner.probe() }
     }
 }
@@ -89,7 +89,7 @@ private struct DupGroupView: View {
                 AppIcon("square.stack", size: 22, hue: hue)
                 Text(appName)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(MMColor.label)
+                    .foregroundStyle(AWColor.label)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Badge(String(format: String(localized: "openWith.copiesCount"), group.copies.count), tone: .orange)
@@ -98,12 +98,12 @@ private struct DupGroupView: View {
             .padding(.vertical, 8)
             .padding(.horizontal, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(MMColor.control)
+            .background(AWColor.control)
 
             // 组内每行。第 0 个(排序后)视为「当前使用」,受保护。
             ForEach(Array(group.copies.enumerated()), id: \.element) { index, url in
                 Rectangle()
-                    .fill(MMColor.separator)
+                    .fill(AWColor.separator)
                     .frame(height: 0.5)
                 DupRowView(url: url,
                            isCurrent: index == 0,
@@ -117,11 +117,11 @@ private struct DupGroupView: View {
                            })
             }
         }
-        .background(MMColor.card)
-        .clipShape(RoundedRectangle(cornerRadius: MMRadius.card, style: .continuous))
+        .background(AWColor.card)
+        .clipShape(RoundedRectangle(cornerRadius: AWRadius.card, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: MMRadius.card, style: .continuous)
-                .stroke(MMColor.hairline, lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: AWRadius.card, style: .continuous)
+                .stroke(AWColor.hairline, lineWidth: 0.5)
         )
     }
 }
@@ -138,10 +138,10 @@ private struct DupRowView: View {
         HStack(spacing: 10) {
             Image(systemName: "square.stack")
                 .font(.system(size: 14))
-                .foregroundStyle(MMColor.label3)
+                .foregroundStyle(AWColor.label3)
             Text(displayPath)
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(MMColor.label2)
+                .foregroundStyle(AWColor.label2)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -149,9 +149,9 @@ private struct DupRowView: View {
             if isCurrent {
                 Badge(String(localized: "openWith.currentBadge"), tone: .green)
             } else {
-                MMButton(String(localized: "openWith.unregister"), size: .sm, action: onUnregister)
+                AWButton(String(localized: "openWith.unregister"), size: .sm, action: onUnregister)
                     .disabled(!supported)
-                MMButton(String(localized: "openWith.unregisterAndTrash"), kind: .danger, size: .sm, action: onTrash)
+                AWButton(String(localized: "openWith.unregisterAndTrash"), kind: .danger, size: .sm, action: onTrash)
                     .disabled(!supported)
             }
         }

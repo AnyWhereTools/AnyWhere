@@ -1,6 +1,6 @@
-name: MenuMate
+name: AnyWhere
 options:
-  bundleIdPrefix: com.menumate
+  bundleIdPrefix: com.anywhere
   developmentLanguage: en
   deploymentTarget:
     macOS: "13.0"
@@ -17,7 +17,7 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     # 签名由 Local.xcconfig 控制（默认 ad-hoc；正式分发用 Developer ID）
 targets:
-  MenuMate:
+  AnyWhere:
     type: application
     platform: macOS
     sources:
@@ -27,40 +27,40 @@ targets:
         buildPhase: resources
         optional: true
     dependencies:
-      - package: MenuMateCore
+      - package: AnyWhereCore
       - package: Sparkle
       - target: FinderExtension
         embed: true
     info:
       path: App/Info.plist
       properties:
-        CFBundleDisplayName: MenuMate
+        CFBundleDisplayName: AnyWhere
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSUIElement: true
         # Sparkle 自动更新:appcast 由发布流程更新到仓库,公钥用你的 EdDSA 公钥替换。见 docs/RELEASING.md。
-        SUFeedURL: https://raw.githubusercontent.com/Hibrielle/menumate/main/appcast.xml
+        SUFeedURL: https://raw.githubusercontent.com/appdev/AnyWhere/main/appcast.xml
         SUPublicEDKey: REPLACE_WITH_YOUR_SPARKLE_PUBLIC_KEY
-        # 正式签名发布 + 填好公钥前,关闭自动检查,避免开发版启动弹「无法检查更新」。
-        # 发布后改为 true(或删掉)即可恢复后台自动更新。手动「检查更新」始终可用。
-        SUEnableAutomaticChecks: false
+        # 默认后台检查，仅发现可用更新时提示；启动配置错误只记录日志。
+        # 公钥和更新源配置有效后，手动「检查更新」也可用。
+        SUEnableAutomaticChecks: true
         # 「前往上一层级目录 / 前往所在目录」等预设用 osascript 控制 Finder 做同窗导航；
         # 主 App 非沙盒，发 Apple Event 需声明此用途串，否则 macOS 自动化授权会被静默拒。
-        NSAppleEventsUsageDescription: "MenuMate 会在你启用的右键预设里控制 Finder，用于在当前窗口内导航（如「前往上一层级目录」「前往所在目录」）。"
+        NSAppleEventsUsageDescription: "AnyWhere 会在你启用的右键预设里控制 Finder，用于在当前窗口内导航（如「前往上一层级目录」「前往所在目录」）。"
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.menumate.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.anywhere.app
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
   FinderExtension:
     type: app-extension
     platform: macOS
     sources: [FinderExtension]
     dependencies:
-      - package: MenuMateCore
+      - package: AnyWhereCore
     info:
       path: FinderExtension/Info.plist
       properties:
-        CFBundleDisplayName: MenuMate Finder Extension
+        CFBundleDisplayName: AnyWhere Finder Extension
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
@@ -72,17 +72,17 @@ targets:
         com.apple.security.app-sandbox: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.menumate.app.FinderExtension
+        PRODUCT_BUNDLE_IDENTIFIER: com.anywhere.app.FinderExtension
 packages:
-  MenuMateCore:
+  AnyWhereCore:
     path: Core
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     from: "2.6.0"
 schemes:
-  MenuMate:
+  AnyWhere:
     build:
       targets:
-        MenuMate: all
+        AnyWhere: all
     run:
       config: Debug

@@ -8,14 +8,14 @@ acknowledge within a few days.
 
 ## Threat model & design notes
 
-MenuMate ships as a **non-sandboxed** Developer ID app plus a **sandboxed** Finder Sync
+AnyWhere ships as a **non-sandboxed** Developer ID app plus a **sandboxed** Finder Sync
 extension. The security posture follows from that split.
 
 - **Scripts run as you.** Presets, your own actions, and imported pack actions are plain
   `zsh` scripts executed with your user privileges — the same trust level as anything you
   run in Terminal. Only enable actions and packs whose scripts you've read. Scripts are
-  invoked via `/bin/zsh "$script" "$@"` with inputs passed as arguments/`MENUMATE_PATHS`;
-  MenuMate never `eval`s or string-interpolates selected paths into a command.
+  invoked via `/bin/zsh "$script" "$@"` with inputs passed as arguments/`ANYWHERE_PATHS`;
+  AnyWhere never `eval`s or string-interpolates selected paths into a command.
 
 - **Extension packs are read-only on import and default-disabled.** Import is a
   `git clone --depth 1` that **never executes anything**. The review step shows every
@@ -38,12 +38,12 @@ extension. The security posture follows from that split.
   deletes `com.apple.quarantine`, only run it on files you trust — it removes the macOS
   "downloaded from the internet / unidentified developer" check for those items.
 
-- **Permissions are requested once.** MenuMate asks for Automation (to drive Finder /
+- **Permissions are requested once.** AnyWhere asks for Automation (to drive Finder /
   System Events for in-window navigation) and, optionally, Accessibility (to send `⌘↑` in
   non-Finder upload dialogs). It does not require Full Disk Access.
 
 - **The AI-authoring path edits local files directly.** The
-  [`menumate-author`](skills/menumate-author/SKILL.md) skill and any external editor write
+  [`anywhere-author`](skills/anywhere-author/SKILL.md) skill and any external editor write
   `config.json` / `Scripts/` directly, bypassing the pack-review gate. That's intended for
   *your own* automation; treat AI- or script-authored actions with the same scrutiny you'd
   give code you wrote.

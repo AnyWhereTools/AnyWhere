@@ -1,5 +1,6 @@
 import Foundation
-import MenuMateCore
+import CryptoKit
+import AnyWhereCore
 
 // MARK: - Public value types
 
@@ -13,6 +14,7 @@ struct InstalledPack: Identifiable, Equatable {
     let commitSHA: String        // 短 SHA
     let enabledCount: Int        // config 中 packID==key 且 isEnabled 的动作数
     let totalCount: Int          // config 中 packID==key 的动作数
+    var isLocal = false
 }
 
 /// `clone` 的产物:已克隆到临时目录、解析+校验过的包,附每个动作脚本源码供审查。
@@ -26,6 +28,7 @@ struct ClonedPack {
     let commitSHA: String        // 短 SHA
     let scripts: [String: String]   // PackAction.id → 脚本源码(读不到则缺省)
     var extraFiles: [PackFile] = []  // manifest 未声明、需审查的文件(隐藏脚本/可执行/二进制)
+    var isLocal = false
 }
 
 /// `checkUpdate` 结果:远端 HEAD 与本地 commitSHA 不同。
@@ -78,6 +81,7 @@ final class PackManager: ObservableObject {
         case manifestInvalid(String)
         case packNotInstalled(String)
         case notAGitRepo
+        case alreadyInstalled
 
         var errorDescription: String? {
             switch self {
@@ -86,6 +90,7 @@ final class PackManager: ObservableObject {
             case .manifestInvalid(let m): return String(format: String(localized: "packs.errorManifest"), m)
             case .packNotInstalled(let k): return String(format: String(localized: "packs.errorPackNotFound"), k)
             case .notAGitRepo: return String(localized: "packs.errorNotAGitRepo")
+            case .alreadyInstalled: return String(localized: "packs.errorAlreadyInstalled")
             }
         }
     }
@@ -113,7 +118,7 @@ final class PackManager: ObservableObject {
                 key: rec.key, manifest: rec.manifest, repoURL: rec.repoURL,
                 repo: rec.repo, commitSHA: rec.commitSHA,
                 enabledCount: mine.filter(\.isEnabled).count,
-                totalCount: mine.count)
+                totalCount: mine.count, isLocal: rec.isLocal == true)
         }
         .sorted { $0.manifest.name.localizedCaseInsensitiveCompare($1.manifest.name) == .orderedAscending }
     }
@@ -126,7 +131,7 @@ final class PackManager: ObservableObject {
         let key = Self.sanitizeKey(repo)
 
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("menumate-pack-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("anywhere-pack-\(UUID().uuidString)", isDirectory: true)
 
         // git clone --depth 1 — pure fetch, no script execution.
         let clone = await Self.git(["clone", "--depth", "1", repoURL, tempDir.path], cwd: nil)
@@ -150,9 +155,39 @@ final class PackManager: ObservableObject {
         }
     }
 
+    // MARK: - Import: local folder snapshot (NEVER executes scripts)
+
+    func prepareLocalDirectory(_ directory: URL) async throws -> ClonedPack {
+        let source = directory.resolvingSymlinksInPath().standardizedFileURL
+        let digest = SHA256.hash(data: Data(source.path.utf8))
+            .map { String(format: "%02x", $0) }.joined()
+        let key = "local-\(digest)"
+        guard !Self.loadInstalled().contains(where: { $0.key == key }) else {
+            throw PackError.alreadyInstalled
+        }
+        let snapshot: PackSnapshot
+        do {
+            snapshot = try await Task.detached(priority: .userInitiated) {
+                try PackSnapshot.copyLocalDirectory(source)
+            }.value
+        } catch let error as PackSnapshot.ReadError {
+            throw Self.mapReadError(error)
+        }
+        let extras = PackInspector.undeclaredFiles(inDirectory: snapshot.directory,
+                                                  declared: Set(snapshot.manifest.actions.map(\.script)))
+        return ClonedPack(tempDir: snapshot.directory, key: key, manifest: snapshot.manifest,
+                          repoURL: source.absoluteString, repo: source.lastPathComponent,
+                          commitSHA: "", scripts: snapshot.scripts, extraFiles: extras, isLocal: true)
+    }
+
     // MARK: - Import: step 2 — confirm (move into place, inject DISABLED actions)
 
     func confirmImport(_ cloned: ClonedPack) throws {
+        // Check again at confirmation: another import may have completed during review.
+        guard !Self.loadInstalled().contains(where: { $0.key == cloned.key }),
+              !appState().config.actions.contains(where: { $0.packID == cloned.key }) else {
+            throw PackError.alreadyInstalled
+        }
         let fm = FileManager.default
         let dest = Self.packDir(cloned.key)
 
@@ -174,7 +209,7 @@ final class PackManager: ObservableObject {
         var records = Self.loadInstalled().filter { $0.key != cloned.key }
         records.append(InstalledRecord(key: cloned.key, repoURL: cloned.repoURL,
                                        repo: cloned.repo, commitSHA: cloned.commitSHA,
-                                       manifest: cloned.manifest))
+                                       manifest: cloned.manifest, isLocal: cloned.isLocal ? true : nil))
         try Self.saveInstalled(records)
 
         appState().update(config)
@@ -182,6 +217,15 @@ final class PackManager: ObservableObject {
     }
 
     // MARK: - Enable / disable a single pack action
+
+    func configurationFields(for action: MenuAction) -> [PackSetting] {
+        guard let key = action.packID,
+              let pack = packs.first(where: { $0.key == key }),
+              let definition = pack.manifest.actions.first(where: {
+                  Self.actionUUID(packKey: key, packActionID: $0.id) == action.id
+              }) else { return [] }
+        return definition.settings
+    }
 
     func setActionEnabled(_ enabled: Bool, actionID: UUID) {
         var config = appState().config
@@ -214,6 +258,7 @@ final class PackManager: ObservableObject {
 
     func checkUpdate(_ key: String) async -> PackUpdateAvailable? {
         guard let rec = Self.loadInstalled().first(where: { $0.key == key }) else { return nil }
+        guard rec.isLocal != true else { return nil }
         // ls-remote avoids touching the working tree; compares the default-branch HEAD.
         let result = await Self.git(["ls-remote", rec.repoURL, "HEAD"], cwd: nil)
         guard result.exitCode == 0 else { return nil }
@@ -230,8 +275,9 @@ final class PackManager: ObservableObject {
         guard let rec = Self.loadInstalled().first(where: { $0.key == key }) else {
             throw PackError.packNotInstalled(key)
         }
+        guard rec.isLocal != true else { throw PackError.notAGitRepo }
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("menumate-pack-update-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("anywhere-pack-update-\(UUID().uuidString)", isDirectory: true)
         let clone = await Self.git(["clone", "--depth", "1", rec.repoURL, tempDir.path], cwd: nil)
         guard clone.exitCode == 0 else {
             try? FileManager.default.removeItem(at: tempDir)
@@ -328,7 +374,7 @@ final class PackManager: ObservableObject {
             title: pa.title,
             icon: .symbol(pa.icon),
             kind: .runScript(spec),
-            matching: MatchRule(targets: pa.targets, utis: pa.utis),
+            matching: pa.matching,
             placement: pa.placement,
             variants: pa.variants,
             presetKey: nil,
@@ -341,31 +387,19 @@ final class PackManager: ObservableObject {
     // MARK: - Manifest + script reading
 
     private static func readManifestAndScripts(in dir: URL) throws -> (PackManifest, [String: String]) {
-        let manifestURL = dir.appendingPathComponent("manifest.json")
-        guard FileManager.default.fileExists(atPath: manifestURL.path),
-              let data = try? Data(contentsOf: manifestURL) else {
-            throw PackError.noManifest
-        }
-        let manifest: PackManifest
         do {
-            manifest = try PackManifest.decode(data)
-            try manifest.validate()
-        } catch {
-            throw PackError.manifestInvalid("\(error)")
+            let snapshot = try PackSnapshot.read(in: dir)
+            return (snapshot.manifest, snapshot.scripts)
+        } catch let error as PackSnapshot.ReadError {
+            throw mapReadError(error)
         }
-        var scripts: [String: String] = [:]
-        for pa in manifest.actions {
-            // pa.script passed the string-level check; also reject symlink escapes now that
-            // we have the real cloned dir (a "safe" relative path can still be a symlink to /etc).
-            guard PackInspector.resolvesInside(directory: dir, relativePath: pa.script) else {
-                throw PackError.manifestInvalid("script path escapes pack: \(pa.script)")
-            }
-            let url = dir.appendingPathComponent(pa.script)
-            if let text = try? String(contentsOf: url, encoding: .utf8) {
-                scripts[pa.id] = text
-            }
+    }
+
+    private static func mapReadError(_ error: PackSnapshot.ReadError) -> PackError {
+        switch error {
+        case .noManifest: return .noManifest
+        case .invalidManifest(let detail): return .manifestInvalid(detail)
         }
-        return (manifest, scripts)
     }
 
     private static func diffScripts(localDir: URL, localManifest: PackManifest,
@@ -460,6 +494,8 @@ final class PackManager: ObservableObject {
         let repo: String
         let commitSHA: String
         let manifest: PackManifest
+        // Optional for compatibility with existing Git pack records.
+        var isLocal: Bool? = nil
     }
 
     private static func loadInstalled() -> [InstalledRecord] {

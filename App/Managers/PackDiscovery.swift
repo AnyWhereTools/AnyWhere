@@ -1,4 +1,4 @@
-// PackDiscovery.swift — 在 App 内发现社区扩展包(扫描 GitHub `menumate-pack` topic)。
+// PackDiscovery.swift — 在 App 内发现社区扩展包(扫描 GitHub `anywhere-pack` topic)。
 //
 // 主 App 非沙盒,URLSession 无需网络 entitlement。用 GitHub 公开搜索 API(免鉴权,
 // 速率较低但偶发浏览足够)。结果交给导入流程(PackImportSheet)按 owner/repo 预填,
@@ -24,9 +24,9 @@ struct DiscoveredPack: Identifiable, Decodable, Equatable {
 }
 
 enum PackDiscovery {
-    static let topic = "menumate-pack"
+    static let topic = "anywhere-pack"
 
-    /// 拉取带 `menumate-pack` topic 的公开仓库,按 star 降序。
+    /// 拉取带 `anywhere-pack` topic 的公开仓库,按 star 降序。
     static func search() async throws -> [DiscoveredPack] {
         guard var comp = URLComponents(string: "https://api.github.com/search/repositories") else {
             throw NSError(domain: "PackDiscovery", code: -2)
@@ -40,7 +40,7 @@ enum PackDiscovery {
         guard let url = comp.url else { throw NSError(domain: "PackDiscovery", code: -3) }
         var req = URLRequest(url: url)
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("MenuMate", forHTTPHeaderField: "User-Agent")
+        req.setValue("AnyWhere", forHTTPHeaderField: "User-Agent")
         req.timeoutInterval = 15
 
         let (data, resp) = try await URLSession.shared.data(for: req)

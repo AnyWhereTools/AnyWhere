@@ -1,4 +1,4 @@
-// DiscoverPacksSheet.swift — 在 App 内发现社区扩展包(扫描 GitHub `menumate-pack` topic)。
+// DiscoverPacksSheet.swift — 在 App 内发现社区扩展包(扫描 GitHub `anywhere-pack` topic)。
 // 列表里点「导入」→ 交给 PackImportSheet 预填 owner/repo,仍走完整审查流程。
 
 import SwiftUI
@@ -23,7 +23,7 @@ struct DiscoverPacksSheet: View {
             footer
         }
         .frame(width: 560, height: 520)
-        .background(MMColor.content)
+        .background(AWColor.content)
         .onAppear(perform: load)
     }
 
@@ -35,41 +35,41 @@ struct DiscoverPacksSheet: View {
                     .font(.system(size: 14.5, weight: .semibold))
                 Text("topic: \(PackDiscovery.topic)")
                     .font(.system(size: 11.5, design: .monospaced))
-                    .foregroundStyle(MMColor.label2)
+                    .foregroundStyle(AWColor.label2)
             }
             Spacer(minLength: 0)
-            MMButton(String(localized: "discover.refresh"), systemImage: "arrow.clockwise", size: .sm, action: load)
+            AWButton(String(localized: "discover.refresh"), systemImage: "arrow.clockwise", size: .sm, action: load)
         }
         .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 12)
-        .overlay(alignment: .bottom) { Rectangle().fill(MMColor.separator).frame(height: 0.5) }
+        .overlay(alignment: .bottom) { Rectangle().fill(AWColor.separator).frame(height: 0.5) }
     }
 
     @ViewBuilder private var content: some View {
         switch phase {
         case .loading:
             centered { ProgressView().controlSize(.small)
-                Text(String(localized: "discover.loading")).font(.system(size: 12.5)).foregroundStyle(MMColor.label2) }
+                Text(String(localized: "discover.loading")).font(.system(size: 12.5)).foregroundStyle(AWColor.label2) }
         case .failed(let msg):
             centered {
-                Image(systemName: "wifi.exclamationmark").font(.system(size: 34)).foregroundStyle(MMColor.label3)
+                Image(systemName: "wifi.exclamationmark").font(.system(size: 34)).foregroundStyle(AWColor.label3)
                 Text(String(localized: "discover.failed")).font(.system(size: 13, weight: .medium))
-                Text(msg).font(.system(size: 11)).foregroundStyle(MMColor.label3).multilineTextAlignment(.center)
+                Text(msg).font(.system(size: 11)).foregroundStyle(AWColor.label3).multilineTextAlignment(.center)
                 HStack(spacing: 8) {
-                    MMButton(String(localized: "discover.retry"), size: .sm, action: load)
-                    MMButton(String(localized: "discover.openInBrowser"), kind: .plain, size: .sm, action: openTopic)
+                    AWButton(String(localized: "discover.retry"), size: .sm, action: load)
+                    AWButton(String(localized: "discover.openInBrowser"), kind: .plain, size: .sm, action: openTopic)
                 }.padding(.top, 4)
             }
         case .loaded(let packs) where packs.isEmpty:
             centered {
-                Image(systemName: "shippingbox").font(.system(size: 34)).foregroundStyle(MMColor.label3)
-                Text(String(localized: "discover.empty")).font(.system(size: 12.5)).foregroundStyle(MMColor.label2)
+                Image(systemName: "shippingbox").font(.system(size: 34)).foregroundStyle(AWColor.label3)
+                Text(String(localized: "discover.empty")).font(.system(size: 12.5)).foregroundStyle(AWColor.label2)
                     .multilineTextAlignment(.center).frame(maxWidth: 380)
             }
         case .loaded(let packs):
             ScrollView {
                 VStack(spacing: 0) {
                     ForEach(Array(packs.enumerated()), id: \.element.id) { i, pack in
-                        if i > 0 { Rectangle().fill(MMColor.separator).frame(height: 0.5) }
+                        if i > 0 { Rectangle().fill(AWColor.separator).frame(height: 0.5) }
                         row(pack)
                     }
                 }
@@ -83,20 +83,20 @@ struct DiscoverPacksSheet: View {
         return HStack(spacing: 11) {
             AppIcon("shippingbox", size: 30, hue: .teal)
             VStack(alignment: .leading, spacing: 1) {
-                Text(pack.fullName).font(.system(size: 13, weight: .semibold)).foregroundStyle(MMColor.label)
+                Text(pack.fullName).font(.system(size: 13, weight: .semibold)).foregroundStyle(AWColor.label)
                 if let d = pack.description, !d.isEmpty {
-                    Text(d).font(.system(size: 11.5)).foregroundStyle(MMColor.label2).lineLimit(2)
+                    Text(d).font(.system(size: 11.5)).foregroundStyle(AWColor.label2).lineLimit(2)
                 }
             }
             Spacer(minLength: 8)
             HStack(spacing: 3) {
-                Image(systemName: "star.fill").font(.system(size: 10)).foregroundStyle(MMColor.label3)
-                Text("\(pack.stargazersCount)").font(.system(size: 11)).foregroundStyle(MMColor.label3)
+                Image(systemName: "star.fill").font(.system(size: 10)).foregroundStyle(AWColor.label3)
+                Text("\(pack.stargazersCount)").font(.system(size: 11)).foregroundStyle(AWColor.label3)
             }
             if installed {
                 Badge(String(localized: "discover.installed"), tone: .green)
             } else {
-                MMButton(String(localized: "discover.import"), kind: .primary, size: .sm) { onImport(pack.fullName) }
+                AWButton(String(localized: "discover.import"), kind: .primary, size: .sm) { onImport(pack.fullName) }
             }
         }
         .padding(.vertical, 8)
@@ -104,11 +104,11 @@ struct DiscoverPacksSheet: View {
 
     private var footer: some View {
         VStack(spacing: 0) {
-            Rectangle().fill(MMColor.separator).frame(height: 0.5)
+            Rectangle().fill(AWColor.separator).frame(height: 0.5)
             HStack(spacing: 9) {
-                MMButton(String(localized: "discover.openInBrowser"), systemImage: "arrow.up.right.square", kind: .plain, size: .sm, action: openTopic)
+                AWButton(String(localized: "discover.openInBrowser"), systemImage: "arrow.up.right.square", kind: .plain, size: .sm, action: openTopic)
                 Spacer(minLength: 0)
-                MMButton(String(localized: "discover.close"), size: .sm, action: onClose)
+                AWButton(String(localized: "discover.close"), size: .sm, action: onClose)
             }
             .padding(.horizontal, 20).padding(.vertical, 12)
         }

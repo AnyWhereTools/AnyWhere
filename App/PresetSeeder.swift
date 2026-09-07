@@ -1,6 +1,6 @@
 import Foundation
 import CryptoKit
-import MenuMateCore
+import AnyWhereCore
 
 enum PresetSeeder {
     /// 启动时对账：把打包的预设脚本同步到 Application Support 的 Scripts/，并准备 Templates/ 与 Data/。
@@ -19,7 +19,7 @@ enum PresetSeeder {
         let scripts = bundledScripts()
         assert(!scripts.isEmpty, "预设脚本未打包进 bundle——检查 project.yml 的 PresetScripts resources 配置")
         if scripts.isEmpty {
-            NSLog("MenuMate: 警告——bundle 内无预设脚本，所有预设动作将失效")
+            NSLog("AnyWhere: 警告——bundle 内无预设脚本，所有预设动作将失效")
         }
 
         var shipped = loadShipped()
@@ -58,10 +58,10 @@ enum PresetSeeder {
     }
 
     /// 记录「曾经补过/见过的预设 presetKey」,防止用户删掉的预设在下次启动被 mergeNewPresets 又补回来。
-    private static let seededKeysDefault = "MMSeededPresetKeys"
+    private static let seededKeysDefault = "AWSeededPresetKeys"
 
     /// 把出厂新增、但用户配置里还没有、且从没补过的预设补进来(按 presetKey 判定;追加到末尾,保留用户布局)。
-    /// 「从没补过」用 MMSeededPresetKeys 墓碑判定:用户主动删除的预设留在墓碑里,不会自动回来
+    /// 「从没补过」用 AWSeededPresetKeys 墓碑判定:用户主动删除的预设留在墓碑里,不会自动回来
     /// (要找回用「恢复出厂预设」)。返回需要写盘的新 config;无新增返回 nil。
     static func mergeNewPresets(into config: MenuConfig) -> MenuConfig? {
         let ud = UserDefaults.standard

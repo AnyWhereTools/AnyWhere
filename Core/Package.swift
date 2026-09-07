@@ -2,13 +2,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "MenuMateCore",
+    name: "AnyWhereCore",
     defaultLocalization: "en",
     platforms: [.macOS(.v13)],
-    products: [.library(name: "MenuMateCore", targets: ["MenuMateCore"])],
+    products: [.library(name: "AnyWhereCore", targets: ["AnyWhereCore"])],
     targets: [
-        .target(name: "MenuMateCore", resources: [.process("Localizable.xcstrings")]),
-        .testTarget(name: "MenuMateCoreTests", dependencies: ["MenuMateCore"],
+        .target(name: "AnyWhereCore", resources: [.process("Localizable.xcstrings")]),
+        .testTarget(name: "AnyWhereCoreTests", dependencies: ["AnyWhereCore"],
                     resources: [.copy("Fixtures")]),
     ]
 )

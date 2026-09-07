@@ -6,7 +6,7 @@
 
 import Foundation
 import AppKit
-import MenuMateCore
+import AnyWhereCore
 
 enum IconStore {
     /// 导入后落盘的图标边长（px）。36 足够 App 内 36pt 头部清晰，且 PNG 字节小（~1–4KB）。

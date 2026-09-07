@@ -1,5 +1,5 @@
 import Foundation
-import MenuMateCore
+import AnyWhereCore
 
 enum ExecutionOutcome {
     case success(summary: String?)

@@ -10,7 +10,7 @@
 //   ○ 第三方扩展     — 仅整体开关(控制点 + 线框图标 + 开关 + 锁)
 
 import SwiftUI
-import MenuMateCore
+import AnyWhereCore
 
 // MARK: - 行高探针(拖拽阈值用实测行高)
 
@@ -37,7 +37,7 @@ struct ScreenMenuHub: View {
     @StateObject private var extensionManager = ExtensionManager()
     @State private var caps = CapabilityProbe.cachedOrUnknown()
 
-    @State private var filter: Int = 0          // 0 全部 / 1 仅 MenuMate / 2 仅系统
+    @State private var filter: Int = 0          // 0 全部 / 1 仅 AnyWhere / 2 仅系统
     @State private var simContext: Int = 0       // 0 图片 / 1 文件 / 2 文件夹 / 3 空白处
     @State private var selection: HubSelection?
     @State private var showDeclutter = false
@@ -48,11 +48,12 @@ struct ScreenMenuHub: View {
     @State private var dragTranslation: CGFloat = 0
     @State private var liveOrder: [MenuAction] = []   // 拖拽会话内的实时顺序(不落盘)
     @State private var rowHeight: CGFloat = 25        // 行高(由 PreferenceKey 实测校正)
+    @GestureState private var reorderGestureActive = false
 
     private var simCtx: SimContext {
         [SimContext.image, .file, .folder, .empty][simContext]
     }
-    private var showMM: Bool { filter != 2 }
+    private var showAW: Bool { filter != 2 }
     private var showSys: Bool { filter != 1 }
 
     /// 顶层 + 子菜单,按 sortOrder 排序的自有动作。
@@ -72,7 +73,7 @@ struct ScreenMenuHub: View {
                     .frame(width: 326)
                     .background(.regularMaterial)
                     .overlay(alignment: .trailing) {
-                        Rectangle().fill(MMColor.separator).frame(width: 0.5)
+                        Rectangle().fill(AWColor.separator).frame(width: 0.5)
                     }
                 detail
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -80,15 +81,19 @@ struct ScreenMenuHub: View {
             .frame(maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(MMColor.content)
+        .background(AWColor.content)
         .onAppear {
             servicesManager.reload()
             extensionManager.reload()
             refreshCaps()
             ensureSelection()
         }
-        .onChange(of: filter) { _ in ensureSelection() }
-        .onChange(of: simContext) { _ in ensureSelection() }
+        .onChange(of: filter) { _ in resetReorder(); ensureSelection() }
+        .onChange(of: simContext) { _ in resetReorder(); ensureSelection() }
+        .onChange(of: reorderGestureActive) { active in
+            if !active { resetReorder() }
+        }
+        .onDisappear { resetReorder() }
         .sheet(isPresented: $showDeclutter) {
             DeclutterSheet(servicesManager: servicesManager, extensionManager: extensionManager) {
                 showDeclutter = false
@@ -104,15 +109,15 @@ struct ScreenMenuHub: View {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 13))
-                        .foregroundStyle(MMColor.label2)
+                        .foregroundStyle(AWColor.label2)
                     Text(String(localized: "menu.sidebarTitle"))
                         .font(.system(size: 13, weight: .semibold))
                     Spacer(minLength: 0)
                     Text(String(localized: "menu.dragToSortClickToEdit"))
                         .font(.system(size: 10.5))
-                        .foregroundStyle(MMColor.label3)
+                        .foregroundStyle(AWColor.label3)
                 }
-                Segmented([String(localized: "menu.filterAll"), String(localized: "menu.filterMenuMateOnly"), String(localized: "menu.filterSystemOnly")], selection: $filter)
+                Segmented([String(localized: "menu.filterAll"), String(localized: "menu.filterAnyWhereOnly"), String(localized: "menu.filterSystemOnly")], selection: $filter)
                 ContextSim(selection: $simContext)
             }
             .padding(.horizontal, 14)
@@ -124,6 +129,7 @@ struct ScreenMenuHub: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 2)
             }
+            .coordinateSpace(name: "menuReorder")
 
             footer
         }
@@ -131,24 +137,28 @@ struct ScreenMenuHub: View {
 
     @ViewBuilder private var footer: some View {
         VStack(spacing: 0) {
-            Rectangle().fill(MMColor.separator).frame(height: 0.5)
+            Rectangle().fill(AWColor.separator).frame(height: 0.5)
             Group {
                 if filter == 2 {
                     Legend()
                 } else {
-                    HStack(spacing: 8) {
-                        MMButton(String(localized: "menu.addAction"), systemImage: "plus", size: .sm) { addAction() }
-                        MMButton(String(localized: "menu.browsePacks"), systemImage: "shippingbox", size: .sm) {
-                            state.settingsTab = .packs
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 6) {
+                            AWButton(String(localized: "menu.addAction"), systemImage: "plus", size: .sm) { addAction() }
+                            AWButton(String(localized: "menu.browsePacks"), systemImage: "shippingbox", size: .sm) {
+                                state.settingsTab = .packs
+                            }
+                            AWButton(String(localized: "declutter.button"), systemImage: "wand.and.sparkles", size: .sm) {
+                                showDeclutter = true
+                            }
                         }
-                        MMButton(String(localized: "declutter.button"), systemImage: "wand.and.sparkles", size: .sm) {
-                            showDeclutter = true
-                        }
-                        Spacer(minLength: 0)
+                        .fixedSize(horizontal: true, vertical: false)
                         Text(String(localized: "menu.realMenuAppearance"))
                             .font(.system(size: 10.5))
-                            .foregroundStyle(MMColor.label3)
+                            .foregroundStyle(AWColor.label3)
                     }
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .padding(.horizontal, 12)
@@ -163,86 +173,89 @@ struct ScreenMenuHub: View {
             // 系统区(灰示意,不可交互)
             Text(String(localized: "menu.systemSampleItems"))
                 .font(.system(size: 12))
-                .foregroundStyle(MMColor.label3)
+                .foregroundStyle(AWColor.label3)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 2)
 
-            if showMM { mmSection }
+            if showAW { awSection }
             if showSys { sysSection }
         }
         .padding(.vertical, 6)
-        .background(MMColor.content)
+        .background(AWColor.content)
         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .shadow(color: .black.opacity(0.22), radius: 14, x: 0, y: 8)
     }
 
-    // MENUMATE 区(●)
-    @ViewBuilder private var mmSection: some View {
+    // ANYWHERE 区(●)
+    @ViewBuilder private var awSection: some View {
         let visible = sortedActions.filter { MenuPreviewVisibility.isVisible($0, in: simCtx) }
         let baseTop = visible.filter { $0.placement == .topLevel }
         let sub = visible.filter { $0.placement == .submenu }
-        // 拖拽进行中用会话顺序;否则用真实顺序。
-        let top = dragID != nil ? liveOrder.filter { a in baseTop.contains(where: { $0.id == a.id }) } : baseTop
 
         sep
-        SectionCap(String(localized: "menu.sectionMenuMateTopLevel"), hint: String(localized: "menu.hintFullControl"))
-        ForEach(Array(top.enumerated()), id: \.element.id) { idx, action in
+        SectionCap(String(localized: "menu.sectionAnyWhereTopLevel"), hint: String(localized: "menu.hintFullControl"))
+        // 拖动时保留 ForEach 的布局位置，只用偏移让位，避免手势所在视图反复换位。
+        ForEach(Array(baseTop.enumerated()), id: \.element.id) { idx, action in
             let isDragging = dragID == action.id
-            let currentIndex = top.firstIndex(where: { $0.id == action.id }) ?? idx
+            let currentIndex = dragID == nil ? idx : (liveOrder.firstIndex(where: { $0.id == action.id }) ?? idx)
             actionRow(action, sub: false)
                 .background(GeometryReader { g in
                     Color.clear.preference(key: RowHeightKey.self, value: g.size.height)
                 })
-                // 被拖行:抬起(放大+阴影+不透明),并相对原位偏移以始终跟随光标。
+                // 被拖行直接跟手；只有其他行的让位使用弹簧动画。
                 .scaleEffect(isDragging ? 1.03 : 1)
                 .shadow(color: isDragging ? .black.opacity(0.28) : .clear,
                         radius: isDragging ? 8 : 0, x: 0, y: isDragging ? 4 : 0)
-                .offset(y: isDragging
-                        ? CGFloat(dragStartIndex - currentIndex) * rowHeight + dragTranslation
-                        : 0)
+                .offset(y: isDragging ? dragTranslation : CGFloat(currentIndex - idx) * rowHeight)
                 .zIndex(isDragging ? 1 : 0)
+                .animation(isDragging ? nil : .spring(response: 0.28, dampingFraction: 0.78),
+                           value: currentIndex)
                 .gesture(
-                    DragGesture(minimumDistance: 6, coordinateSpace: .local)
+                    DragGesture(minimumDistance: 6, coordinateSpace: .named("menuReorder"))
+                        .updating($reorderGestureActive) { _, active, _ in active = true }
                         .onChanged { value in
                             if dragID == nil {
                                 dragID = action.id
                                 liveOrder = baseTop
                                 dragStartIndex = baseTop.firstIndex(where: { $0.id == action.id }) ?? idx
+                                selection = .ownAction(action.id)
                             }
-                            dragTranslation = value.translation.height
+                            // 限制在当前顶层列表内，拖到首尾外也不会丢失被拖行。
+                            dragTranslation = max(-CGFloat(dragStartIndex) * rowHeight,
+                                min(CGFloat(liveOrder.count - 1 - dragStartIndex) * rowHeight,
+                                    value.translation.height))
                             let desired = max(0, min(liveOrder.count - 1,
-                                dragStartIndex + Int((value.translation.height / rowHeight).rounded())))
+                                dragStartIndex + Int((dragTranslation / rowHeight).rounded())))
                             if let cur = liveOrder.firstIndex(where: { $0.id == action.id }), cur != desired {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
-                                    let moved = liveOrder.remove(at: cur)
-                                    liveOrder.insert(moved, at: desired)
-                                }
+                                let moved = liveOrder.remove(at: cur)
+                                liveOrder.insert(moved, at: desired)
                             }
                         }
                         .onEnded { _ in
-                            commitReorder(liveOrder)
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                dragID = nil
-                                dragTranslation = 0
+                            // 同一事务提交真实顺序并归零偏移，避免布局换位与偏移动画叠加。
+                            var transaction = Transaction()
+                            transaction.disablesAnimations = true
+                            withTransaction(transaction) {
+                                commitReorder(liveOrder)
+                                resetReorder()
                             }
                         }
                 )
-                .animation(.spring(response: 0.28, dampingFraction: 0.78), value: top.map(\.id))
         }
         .onPreferenceChange(RowHeightKey.self) { h in
             if h > 1 { rowHeight = h }
         }
         if !sub.isEmpty {
-            // 「MenuMate ▸」子菜单父行
+            // 「AnyWhere ▸」子菜单父行
             HStack(spacing: 8) {
                 Color.clear.frame(width: 13, height: 1)
                 AppIcon("line.3.horizontal", size: 17, hue: .blue)
-                Text("MenuMate")
+                Text("AnyWhere")
                     .font(.system(size: 12.5))
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(MMColor.label3)
+                    .foregroundStyle(AWColor.label3)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
@@ -255,7 +268,7 @@ struct ScreenMenuHub: View {
             }
             .padding(.leading, 2)
             .overlay(alignment: .leading) {
-                Rectangle().fill(MMColor.separator).frame(width: 1.5)
+                Rectangle().fill(AWColor.separator).frame(width: 1.5)
             }
             .padding(.leading, 22)
             .padding(.trailing, 6)
@@ -373,19 +386,19 @@ struct ScreenMenuHub: View {
             // 系统服务 / 第三方扩展选中时,底部出现维护底栏。
             if isSystemSelection {
                 VStack(spacing: 0) {
-                    Rectangle().fill(MMColor.separator).frame(height: 0.5)
+                    Rectangle().fill(AWColor.separator).frame(height: 0.5)
                     HStack(spacing: 8) {
-                        MMButton(String(localized: "menu.refresh"), systemImage: "arrow.clockwise", size: .sm) {
+                        AWButton(String(localized: "menu.refresh"), systemImage: "arrow.clockwise", size: .sm) {
                             servicesManager.reload()
                             extensionManager.reload()
                             refreshCapsForce()
                         }
-                        MMButton(String(localized: "menu.restartFinderToApply"), kind: .tinted, size: .sm) {
+                        AWButton(String(localized: "menu.restartFinderToApply"), kind: .tinted, size: .sm) {
                             servicesManager.restartFinder()
                         }
                         Spacer(minLength: 0)
                         if servicesManager.hasBackup {
-                            MMButton(String(localized: "menu.restorePbsBackup"), kind: .danger, size: .sm) {
+                            AWButton(String(localized: "menu.restorePbsBackup"), kind: .danger, size: .sm) {
                                 servicesManager.restoreBackup()
                             }
                         }
@@ -454,10 +467,10 @@ struct ScreenMenuHub: View {
         VStack(spacing: 8) {
             Image(systemName: "hand.point.up.left")
                 .font(.system(size: 28))
-                .foregroundStyle(MMColor.label3)
+                .foregroundStyle(AWColor.label3)
             Text(String(localized: "menu.placeholderSelectToView"))
                 .font(.system(size: 12.5))
-                .foregroundStyle(MMColor.label2)
+                .foregroundStyle(AWColor.label2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(40)
@@ -466,7 +479,7 @@ struct ScreenMenuHub: View {
     // MARK: 小部件
 
     private var sep: some View {
-        Rectangle().fill(MMColor.separator)
+        Rectangle().fill(AWColor.separator)
             .frame(height: 0.5)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
@@ -475,7 +488,7 @@ struct ScreenMenuHub: View {
     private func emptyHint(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 11.5))
-            .foregroundStyle(MMColor.label3)
+            .foregroundStyle(AWColor.label3)
             .padding(.horizontal, 14)
             .padding(.vertical, 3)
     }
@@ -505,12 +518,19 @@ struct ScreenMenuHub: View {
             packName: action.packID.flatMap { key in
                 state.packManager.packs.first(where: { $0.key == key })?.manifest.name
             } ?? action.packRepo.map(packName) ?? String(localized: "menu.packFallbackName"),
-            onSave: { saveAction($0) })
+            onSave: { saveAction($0) },
+            configurationFields: state.packManager.configurationFields(for: action))
     }
 
     /// owner/repo 取末段作为包名兜底显示(无安装记录时)。
     private func packName(_ repo: String) -> String {
         repo.split(separator: "/").last.map(String.init) ?? repo
+    }
+
+    private func resetReorder() {
+        dragID = nil
+        dragTranslation = 0
+        liveOrder = []
     }
 
     /// 拖拽结束:把拖拽会话的顶层顺序落盘。
@@ -569,7 +589,7 @@ struct ScreenMenuHub: View {
     }
 
     private func deleteAction(_ action: MenuAction) {
-        // 从配置移除该动作(自有动作彻底删除;预设删除靠 MMSeededPresetKeys 墓碑"粘住",
+        // 从配置移除该动作(自有动作彻底删除;预设删除靠 AWSeededPresetKeys 墓碑"粘住",
         // 不会下次启动被补回,可用「恢复出厂预设」找回)。脚本文件保留;孤儿图标由 mutateConfig 的 GC 清理。
         state.mutateConfig { config in
             config.actions.removeAll { $0.id == action.id }
@@ -587,7 +607,7 @@ struct ScreenMenuHub: View {
     /// 选中态兜底:默认选中第一个自有动作(尊重当前筛选 / 模拟对象)。
     private func ensureSelection() {
         if let sel = selection, selectionStillValid(sel) { return }
-        if showMM {
+        if showAW {
             let visible = sortedActions.filter { MenuPreviewVisibility.isVisible($0, in: simCtx) }
             if let first = visible.first {
                 selection = .ownAction(first.id)
@@ -610,7 +630,7 @@ struct ScreenMenuHub: View {
     private func selectionStillValid(_ sel: HubSelection) -> Bool {
         switch sel {
         case .ownAction(let id):
-            guard showMM, let a = state.config.actions.first(where: { $0.id == id }) else { return false }
+            guard showAW, let a = state.config.actions.first(where: { $0.id == id }) else { return false }
             return MenuPreviewVisibility.isVisible(a, in: simCtx)
         case .systemService(let id):
             return showSys && servicesManager.services.contains { $0.id == id }
@@ -644,7 +664,7 @@ struct ContextSim: View {
             Text(String(localized: "menu.simContextLabel"))
                 .font(.system(size: 10.5, weight: .semibold))
                 .tracking(0.2)
-                .foregroundStyle(MMColor.label2)
+                .foregroundStyle(AWColor.label2)
             Segmented([String(localized: "menu.simImage"), String(localized: "menu.simFile"), String(localized: "menu.simFolder"), String(localized: "menu.simEmpty")], selection: $selection)
         }
     }
@@ -666,11 +686,11 @@ struct SectionCap: View {
             Text(title)
                 .font(.system(size: 9.5, weight: .semibold))
                 .tracking(0.4)
-                .foregroundStyle(MMColor.label3)
+                .foregroundStyle(AWColor.label3)
             if let hint {
                 Text(hint)
                     .font(.system(size: 9.5))
-                    .foregroundStyle(MMColor.label4)
+                    .foregroundStyle(AWColor.label4)
             }
         }
         .padding(.horizontal, 14)
@@ -713,10 +733,10 @@ struct TierRow: View {
             if glyphMode {
                 ZStack {
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .stroke(MMColor.label4, lineWidth: 1)
+                        .stroke(AWColor.label4, lineWidth: 1)
                     Image(systemName: iconSymbol)
                         .font(.system(size: 11))
-                        .foregroundStyle(MMColor.label3)
+                        .foregroundStyle(AWColor.label3)
                 }
                 .frame(width: 17, height: 17)
             } else if let iconImageName {
@@ -727,7 +747,7 @@ struct TierRow: View {
 
             Text(title)
                 .font(.system(size: 12.5, weight: selected ? .semibold : .regular))
-                .foregroundStyle(selected ? Color.white : MMColor.label)
+                .foregroundStyle(selected ? Color.white : AWColor.label)
                 .lineLimit(1)
                 .truncationMode(.tail)
 
@@ -736,7 +756,7 @@ struct TierRow: View {
             if locked {
                 Image(systemName: "lock.fill")
                     .font(.system(size: 10))
-                    .foregroundStyle(selected ? Color.white : MMColor.label3)
+                    .foregroundStyle(selected ? Color.white : AWColor.label3)
             }
             if let badge {
                 Badge(badge.0, tone: selected ? .gray : badge.1)
@@ -744,16 +764,16 @@ struct TierRow: View {
             if showsChevron {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(selected ? Color.white : MMColor.label3)
+                    .foregroundStyle(selected ? Color.white : AWColor.label3)
             }
-            MMSwitch($isOn, scale: 0.56)
+            AWSwitch($isOn, scale: 0.56)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .padding(.horizontal, 6)
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(selected ? MMColor.accent : Color.clear)
+                .fill(selected ? AWColor.accent : Color.clear)
                 .padding(.horizontal, 6)
         )
         .opacity(isOn ? 1 : 0.55)
@@ -772,11 +792,11 @@ struct Legend: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MMColor.content)
+        .background(AWColor.content)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(MMColor.hairline, lineWidth: 0.5)
+                .stroke(AWColor.hairline, lineWidth: 0.5)
         )
     }
 
@@ -785,8 +805,7 @@ struct Legend: View {
             ControlDot(kind, size: 9)
             Text(text)
                 .font(.system(size: 10.5))
-                .foregroundStyle(MMColor.label2)
+                .foregroundStyle(AWColor.label2)
         }
     }
 }
-

@@ -16,18 +16,18 @@ fail() { print -u2 "FAIL: $1"; exit 1 }
 # --- new-file: 模板复制 + 自动编号 ---
 tpl="$T/templates"; mkdir -p "$tpl"; print "hello" > "$tpl/Note.md"
 work="$T/work"; mkdir -p "$work"
-MENUMATE_TEMPLATES="$tpl" MENUMATE_VARIANT="Note.md" /bin/zsh "$PRESETS/new-file.sh" "$work" >/dev/null
+ANYWHERE_TEMPLATES="$tpl" ANYWHERE_VARIANT="Note.md" /bin/zsh "$PRESETS/new-file.sh" "$work" >/dev/null
 [[ -f "$work/Note.md" ]] || fail "new-file 未创建 Note.md"
-MENUMATE_TEMPLATES="$tpl" MENUMATE_VARIANT="Note.md" /bin/zsh "$PRESETS/new-file.sh" "$work" >/dev/null
+ANYWHERE_TEMPLATES="$tpl" ANYWHERE_VARIANT="Note.md" /bin/zsh "$PRESETS/new-file.sh" "$work" >/dev/null
 [[ -f "$work/Note 2.md" ]] || fail "new-file 未自动编号为 'Note 2.md'"
 
 # --- cut + paste: 经 cutbuffer 移动 ---
 data="$T/data"; mkdir -p "$data"
 src="$T/src"; mkdir -p "$src"; print x > "$src/a.txt"; print y > "$src/b.txt"
 dst="$T/dst"; mkdir -p "$dst"
-MENUMATE_DATA="$data" /bin/zsh "$PRESETS/cut.sh" "$src/a.txt" "$src/b.txt" >/dev/null
+ANYWHERE_DATA="$data" /bin/zsh "$PRESETS/cut.sh" "$src/a.txt" "$src/b.txt" >/dev/null
 [[ -s "$data/cutbuffer" ]] || fail "cut 未写 cutbuffer"
-MENUMATE_DATA="$data" /bin/zsh "$PRESETS/paste.sh" "$dst" >/dev/null
+ANYWHERE_DATA="$data" /bin/zsh "$PRESETS/paste.sh" "$dst" >/dev/null
 [[ -f "$dst/a.txt" && -f "$dst/b.txt" ]] || fail "paste 未移动到目标"
 [[ ! -e "$src/a.txt" && ! -e "$src/b.txt" ]] || fail "paste 未从源删除(应为移动)"
 [[ ! -e "$data/cutbuffer" ]] || fail "paste 未清空 cutbuffer"

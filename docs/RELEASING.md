@@ -1,6 +1,6 @@
-# Releasing MenuMate
+# Releasing AnyWhere
 
-MenuMate ships as a **Developer ID-signed, notarized `.dmg`** with **Sparkle** auto-updates.
+AnyWhere ships as a **Developer ID-signed, notarized `.dmg`** with **Sparkle** auto-updates.
 This document covers the one-time setup and the per-release flow.
 
 > Distribution requires a paid **Apple Developer Program** membership and a **Developer ID
@@ -29,9 +29,9 @@ Download the `AuthKey_XXXXXX.p8`. Note the **Key ID** and **Issuer ID**.
 For local runs you can instead store a notarytool profile once:
 
 ```bash
-xcrun notarytool store-credentials menumate-notary \
+xcrun notarytool store-credentials anywhere-notary \
   --key AuthKey_XXXXXX.p8 --key-id <KEY_ID> --issuer <ISSUER_ID>
-# then run releases with NOTARY_PROFILE=menumate-notary
+# then run releases with NOTARY_PROFILE=anywhere-notary
 ```
 
 ### 3. Sparkle EdDSA keys
@@ -50,6 +50,12 @@ build/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys -x sparkle_priv
 ```
 
 After setting `SUPublicEDKey`, re-run `make gen`.
+
+The update feed is `https://raw.githubusercontent.com/appdev/AnyWhere/main/appcast.xml`.
+Publish an AnyWhere release and its feed in this repository; the upstream project's feed
+is not used. Automatic checks are enabled by default and run silently on launch. Only
+available updates prompt the user; initialization errors are logged without showing an
+alert. Manual checks remain unavailable until the updater is configured successfully.
 
 ### 4. GitHub Actions secrets
 
@@ -78,12 +84,12 @@ Export the cert as base64: `base64 -i DeveloperID.p12 | pbcopy`.
 ```bash
 export DEVELOPER_ID_APP="Developer ID Application: Your Name (TEAMID)"
 export TEAM_ID=TEAMID
-export NOTARY_PROFILE=menumate-notary        # from step 2
+export NOTARY_PROFILE=anywhere-notary        # from step 2
 make release VERSION=1.0.0
 ```
 
 This archives (Release, hardened runtime), exports a Developer ID app, builds a signed dmg,
-notarizes + staples it, and prints the Sparkle signature. Artifact: `build/release/MenuMate-1.0.0.dmg`.
+notarizes + staples it, and prints the Sparkle signature. Artifact: `build/release/AnyWhere-1.0.0.dmg`.
 
 ### Via CI (recommended)
 
@@ -102,8 +108,8 @@ git tag v1.0.0 && git push origin v1.0.0
 ## Checklist
 
 - [ ] `SUPublicEDKey` in `project.yml` is your real Sparkle public key (not the placeholder).
-- [ ] Re-enable auto-update: set `SUEnableAutomaticChecks` to `true` (or remove it) in `project.yml` — it's `false` pre-release so dev builds don't pop a "can't check for updates" error on launch.
+- [ ] Verify the default background check (`SUEnableAutomaticChecks: true`): an available update prompts, while no update or a check failure does not. Manual checks still report their results.
 - [ ] Version bumped in `App/Info.plist`.
 - [ ] All nine GitHub secrets set (for CI).
-- [ ] `xcrun stapler validate build/release/MenuMate-<v>.dmg` passes.
-- [ ] Gatekeeper check on a clean machine: `spctl -a -vvv -t install MenuMate-<v>.dmg`.
+- [ ] `xcrun stapler validate build/release/AnyWhere-<v>.dmg` passes.
+- [ ] Gatekeeper check on a clean machine: `spctl -a -vvv -t install AnyWhere-<v>.dmg`.

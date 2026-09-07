@@ -1,6 +1,6 @@
 import FinderSync
 import AppKit
-import MenuMateCore
+import AnyWhereCore
 
 class FinderSync: FIFinderSync {
     /// 扩展零文件访问：菜单数据（config + 预解析目录列举）由主 App 经分布式通知推送，
@@ -59,7 +59,7 @@ class FinderSync: FIFinderSync {
             return nil
         }
         guard Date().timeIntervalSince(lastHeartbeat) < 10 else {
-            return singleItemMenu(title: String(localized: "ext.launchMenuMate"))
+            return singleItemMenu(title: String(localized: "ext.launchAnyWhere"))
         }
         guard let snap = snapshot else {
             requestSnapshot()   // 主 App 在跑（心跳新鲜）但快照未达：催一份，下次右键即可用
@@ -157,7 +157,7 @@ class FinderSync: FIFinderSync {
     @objc private func launchMainApp(_ sender: Any?) {
         guard Date().timeIntervalSince(lastLaunchAttempt) > 60 else { return }
         lastLaunchAttempt = Date()
-        // appex 位于 MenuMate.app/Contents/PlugIns/FinderExtension.appex → 上溯 3 级
+        // appex 位于 AnyWhere.app/Contents/PlugIns/FinderExtension.appex → 上溯 3 级
         let appURL = Bundle.main.bundleURL
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         guard appURL.pathExtension == "app" else { return }

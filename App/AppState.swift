@@ -1,5 +1,5 @@
 import Foundation
-import MenuMateCore
+import AnyWhereCore
 
 @MainActor
 final class AppState: ObservableObject {

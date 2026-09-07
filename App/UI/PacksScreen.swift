@@ -11,7 +11,7 @@
 
 import SwiftUI
 import AppKit
-import MenuMateCore
+import AnyWhereCore
 
 // MARK: - ScreenPacks(扩展包 Tab 主屏)
 
@@ -42,7 +42,7 @@ struct ScreenPacks: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(MMColor.content)
+        .background(AWColor.content)
         .onAppear { packManager.reload() }
         .sheet(isPresented: $showImport) {
             PackImportSheet(packManager: packManager) { showImport = false }
@@ -88,7 +88,7 @@ struct ScreenPacks: View {
                 VStack(alignment: .leading, spacing: 0) {
                     VStack(spacing: 0) {
                         ForEach(Array(packManager.packs.enumerated()), id: \.element.id) { i, pack in
-                            if i > 0 { Rectangle().fill(MMColor.separator).frame(height: 0.5) }
+                            if i > 0 { Rectangle().fill(AWColor.separator).frame(height: 0.5) }
                             PackRow(
                                 pack: pack,
                                 update: updates[pack.key],
@@ -104,14 +104,14 @@ struct ScreenPacks: View {
                             )
                         }
                     }
-                    .background(MMColor.card)
+                    .background(AWColor.card)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(MMColor.hairline, lineWidth: 0.5))
+                        .stroke(AWColor.hairline, lineWidth: 0.5))
 
                     Text(footerText)
                         .font(.system(size: 11.5))
-                        .foregroundStyle(MMColor.label3)
+                        .foregroundStyle(AWColor.label3)
                         .padding(.horizontal, 4)
                         .padding(.top, 10)
                 }
@@ -143,10 +143,14 @@ struct ScreenPacks: View {
     }
 
     private func browse() {
-        showDiscover = true   // App 内发现社区包(扫描 menumate-pack topic),不再跳浏览器
+        showDiscover = true   // App 内发现社区包(扫描 anywhere-pack topic),不再跳浏览器
     }
 
     private func openRepo(_ pack: InstalledPack) {
+        if pack.isLocal, let url = URL(string: pack.repoURL), url.isFileURL {
+            NSWorkspace.shared.open(url)
+            return
+        }
         // 优先用包记录的 repoURL;退化成 owner/repo 主页。
         let webURL: String
         if pack.repoURL.hasPrefix("http") {
@@ -229,19 +233,19 @@ struct PacksHeader: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            MMButton(String(localized: "packs.importPack"), systemImage: "plus", kind: .primary, action: onImport)
-            MMButton(String(localized: "packs.browseCommunity"), systemImage: "magnifyingglass", kind: .plain, action: onBrowse)
-            Text("topic: menumate-pack")
+            AWButton(String(localized: "packs.importPack"), systemImage: "plus", kind: .primary, action: onImport)
+            AWButton(String(localized: "packs.browseCommunity"), systemImage: "magnifyingglass", kind: .plain, action: onBrowse)
+            Text("topic: anywhere-pack")
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(MMColor.label3)
+                .foregroundStyle(AWColor.label3)
             Spacer(minLength: 0)
             if checking {
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
-                    Text(String(localized: "packs.checking")).font(.system(size: 12)).foregroundStyle(MMColor.label2)
+                    Text(String(localized: "packs.checking")).font(.system(size: 12)).foregroundStyle(AWColor.label2)
                 }
             } else {
-                MMButton(String(localized: "packs.checkAllUpdates"), systemImage: "arrow.clockwise", size: .sm, action: onCheckAll)
+                AWButton(String(localized: "packs.checkAllUpdates"), systemImage: "arrow.clockwise", size: .sm, action: onCheckAll)
             }
         }
         .padding(.horizontal, 16)
@@ -284,27 +288,27 @@ struct PackRow: View {
             HStack(spacing: 10) {
                 Image(systemName: expanded ? "chevron.down" : "chevron.right")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(MMColor.label3)
+                    .foregroundStyle(AWColor.label3)
                     .frame(width: 12)
                 AppIcon(pack.manifest.icon, size: 30, hue: .teal)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 7) {
                         Text(pack.manifest.name)
                             .font(.system(size: 13.5, weight: .semibold))
-                            .foregroundStyle(MMColor.label)
+                            .foregroundStyle(AWColor.label)
                         if update != nil {
-                            MMDot()
+                            AWDot()
                             Badge(String(localized: "packs.updateAvailable"), tone: .accent)
                         }
                     }
-                    Text("\(pack.repo) · \(pack.commitSHA)")
+                    Text("\(pack.repo) · \(pack.isLocal ? String(localized: "packs.localSource") : pack.commitSHA)")
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(MMColor.label2)
+                        .foregroundStyle(AWColor.label2)
                 }
                 Spacer(minLength: 0)
                 Text(String(format: String(localized: "packs.enabledCount"), pack.enabledCount, pack.totalCount))
                     .font(.system(size: 12))
-                    .foregroundStyle(MMColor.label2)
+                    .foregroundStyle(AWColor.label2)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
@@ -318,47 +322,48 @@ struct PackRow: View {
             // 动作小列表
             VStack(spacing: 0) {
                 ForEach(Array(actions.enumerated()), id: \.element.id) { i, action in
-                    if i > 0 { Rectangle().fill(MMColor.separator).frame(height: 0.5) }
+                    if i > 0 { Rectangle().fill(AWColor.separator).frame(height: 0.5) }
                     HStack(spacing: 9) {
-                        MMSwitch(
+                        AWSwitch(
                             Binding(get: { action.isEnabled },
                                     set: { onSetEnabled($0, action.id) }),
                             scale: 0.62)
                         Text(action.title)
                             .font(.system(size: 12.5))
-                            .foregroundStyle(MMColor.label)
+                            .foregroundStyle(AWColor.label)
                         Spacer(minLength: 0)
-                        MMButton(String(localized: "packs.viewScript"), kind: .plain, size: .sm) { onViewScript(action) }
+                        AWButton(String(localized: "packs.viewScript"), kind: .plain, size: .sm) { onViewScript(action) }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .opacity(action.isEnabled ? 1 : 0.55)
                 }
             }
-            .background(MMColor.card)
+            .background(AWColor.card)
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(MMColor.hairline, lineWidth: 0.5))
+                .stroke(AWColor.hairline, lineWidth: 0.5))
 
             // 按钮行
             HStack(spacing: 8) {
                 if update != nil {
-                    MMButton(String(localized: "packs.updateEllipsis"), systemImage: "arrow.down.circle",
+                    AWButton(String(localized: "packs.updateEllipsis"), systemImage: "arrow.down.circle",
                              kind: .primary, size: .sm, action: onUpdate)
                 }
-                MMButton(String(localized: "packs.openRepoHome"), systemImage: "arrow.up.right.square",
+                AWButton(pack.isLocal ? String(localized: "packs.openLocalFolder") : String(localized: "packs.openRepoHome"),
+                         systemImage: pack.isLocal ? "folder" : "arrow.up.right.square",
                          size: .sm, action: onOpenRepo)
                 Spacer(minLength: 0)
-                MMButton(String(localized: "packs.uninstallEllipsis"), systemImage: "trash", kind: .danger, size: .sm, action: onUninstall)
+                AWButton(String(localized: "packs.uninstallEllipsis"), systemImage: "trash", kind: .danger, size: .sm, action: onUninstall)
             }
         }
         .padding(.leading, 46)
         .padding(.trailing, 14)
         .padding(.top, 2)
         .padding(.bottom, 12)
-        .background(MMColor.content)
+        .background(AWColor.content)
         .overlay(alignment: .top) {
-            Rectangle().fill(MMColor.separator).frame(height: 0.5)
+            Rectangle().fill(AWColor.separator).frame(height: 0.5)
         }
     }
 }
@@ -373,25 +378,25 @@ struct ScreenPacksEmpty: View {
         VStack(spacing: 16) {
             ZStack {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(MMColor.accentTint)
+                    .fill(AWColor.accentTint)
                     .frame(width: 96, height: 96)
                 Image(systemName: "shippingbox")
                     .font(.system(size: 50, weight: .light))
-                    .foregroundStyle(MMColor.accent)
+                    .foregroundStyle(AWColor.accent)
             }
             VStack(spacing: 6) {
                 Text(String(localized: "packs.emptyTitle"))
                     .font(.system(size: 17, weight: .semibold))
                 Text(String(localized: "packs.emptyBody"))
                     .font(.system(size: 12.5))
-                    .foregroundStyle(MMColor.label2)
+                    .foregroundStyle(AWColor.label2)
                     .multilineTextAlignment(.center)
                     .lineSpacing(2.5)
                     .frame(maxWidth: 360)
             }
             HStack(spacing: 10) {
-                MMButton(String(localized: "packs.importPack"), systemImage: "plus", kind: .primary, action: onImport)
-                MMButton(String(localized: "packs.browseCommunity"), systemImage: "magnifyingglass", action: onBrowse)
+                AWButton(String(localized: "packs.importPack"), systemImage: "plus", kind: .primary, action: onImport)
+                AWButton(String(localized: "packs.browseCommunity"), systemImage: "magnifyingglass", action: onBrowse)
             }
             .padding(.top, 2)
         }

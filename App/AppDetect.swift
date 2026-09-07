@@ -1,5 +1,5 @@
 // AppDetect.swift — 探测已安装的终端/编辑器,供「通用」里选「默认终端 / 默认编辑器」。
-// 选择存 UserDefaults,ActionRunner 注入 MENUMATE_TERMINAL / MENUMATE_EDITOR 环境变量,
+// 选择存 UserDefaults,ActionRunner 注入 ANYWHERE_TERMINAL / ANYWHERE_EDITOR 环境变量,
 // 预设脚本 open-terminal.sh / open-editor.sh 读它决定开哪个(脚本优先,不必改脚本即可切换)。
 
 import AppKit
@@ -48,8 +48,8 @@ enum AppDetect {
 
 /// 用户对默认终端/编辑器的偏好(bundle id);空 = 跟随脚本内置默认。
 enum AppPrefs {
-    private static let terminalKey = "MMPreferredTerminal"
-    private static let editorKey = "MMPreferredEditor"
+    private static let terminalKey = "AWPreferredTerminal"
+    private static let editorKey = "AWPreferredEditor"
 
     static var terminalBundleID: String? {
         get { value(terminalKey) }

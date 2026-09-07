@@ -5,10 +5,10 @@
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
-import MenuMateCore
+import AnyWhereCore
 
 /// 动作可选的常用 SF Symbol 字形集(覆盖文件/脚本/转换/压缩/开发/网络等常见动作)。
-let mmActionSymbols: [String] = [
+let awActionSymbols: [String] = [
     "doc.on.doc", "doc.badge.plus", "doc.on.clipboard", "doc.text", "doc.zipper",
     "folder", "folder.badge.plus", "tray", "tray.and.arrow.down", "archivebox",
     "terminal", "chevron.left.forwardslash.chevron.right", "curlybraces", "function", "number",
@@ -36,17 +36,17 @@ struct IconPickerField: View {
                 ActionIconView(icon: icon, hue: hue, size: 22)
                 Text(label)
                     .font(.system(size: 11.5, design: .monospaced))
-                    .foregroundStyle(MMColor.label2)
+                    .foregroundStyle(AWColor.label2)
                     .lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(MMColor.label3)
+                    .foregroundStyle(AWColor.label3)
             }
             .padding(.leading, 6).padding(.trailing, 9).padding(.vertical, 4)
-            .background(MMColor.control)
-            .clipShape(RoundedRectangle(cornerRadius: MMRadius.control, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: MMRadius.control, style: .continuous)
-                .stroke(MMColor.border, lineWidth: 0.5))
+            .background(AWColor.control)
+            .clipShape(RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous)
+                .stroke(AWColor.border, lineWidth: 0.5))
         }
         .buttonStyle(.plain)
         .popover(isPresented: $open, arrowEdge: .bottom) {
@@ -76,7 +76,7 @@ private struct IconPickerPopover: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(String(localized: "iconPicker.color"))
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(MMColor.label2)
+                .foregroundStyle(AWColor.label2)
             HStack(spacing: 9) {
                 ForEach(AppIconHue.allCases, id: \.self) { h in
                     Circle()
@@ -94,27 +94,27 @@ private struct IconPickerPopover: View {
             HStack(spacing: 8) {
                 Text(String(localized: "iconPicker.icon"))
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(MMColor.label2)
+                    .foregroundStyle(AWColor.label2)
                 Spacer(minLength: 0)
-                MMButton(String(localized: "iconPicker.importImage"), systemImage: "photo.badge.plus", size: .sm) { importImage() }
+                AWButton(String(localized: "iconPicker.importImage"), systemImage: "photo.badge.plus", size: .sm) { importImage() }
             }
             if case .imageFile = icon {
                 HStack(spacing: 8) {
                     ActionIconView(icon: icon, hue: hue, size: 22)
                     Text(String(localized: "iconPicker.customImageHint"))
                         .font(.system(size: 10.5))
-                        .foregroundStyle(MMColor.label3)
+                        .foregroundStyle(AWColor.label3)
                 }
             }
             ScrollView {
                 LazyVGrid(columns: cols, spacing: 6) {
-                    ForEach(mmActionSymbols, id: \.self) { s in
+                    ForEach(awActionSymbols, id: \.self) { s in
                         ZStack {
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
                                 .fill(s == currentSymbol ? Color.accentColor.opacity(0.18) : Color.clear)
                             Image(systemName: s)
                                 .font(.system(size: 15, weight: .regular))
-                                .foregroundStyle(s == currentSymbol ? Color.accentColor : MMColor.label)
+                                .foregroundStyle(s == currentSymbol ? Color.accentColor : AWColor.label)
                         }
                         .frame(width: 32, height: 30)
                         .contentShape(Rectangle())

@@ -1,5 +1,5 @@
 #!/bin/zsh
-# MenuMate release pipeline: archive → Developer ID sign → dmg → notarize → staple → Sparkle sign.
+# AnyWhere release pipeline: archive → Developer ID sign → dmg → notarize → staple → Sparkle sign.
 #
 # Requires (see docs/RELEASING.md):
 #   DEVELOPER_ID_APP   "Developer ID Application: Your Name (TEAMID)"  (signing identity)
@@ -22,16 +22,16 @@ cd "$ROOT"
 : "${TEAM_ID:?set TEAM_ID}"
 
 BUILD="$ROOT/build/release"
-ARCHIVE="$BUILD/MenuMate.xcarchive"
+ARCHIVE="$BUILD/AnyWhere.xcarchive"
 EXPORT="$BUILD/export"
-DMG="$BUILD/MenuMate-$VERSION.dmg"
+DMG="$BUILD/AnyWhere-$VERSION.dmg"
 SPARKLE_BIN="$ROOT/build/SourcePackages/artifacts/sparkle/Sparkle/bin"
 
 echo "==> Generating project"
 make gen >/dev/null
 
 echo "==> Resolving Swift packages (ensures the Sparkle CLI tools are present)"
-xcodebuild -project MenuMate.xcodeproj -scheme MenuMate \
+xcodebuild -project AnyWhere.xcodeproj -scheme AnyWhere \
   -derivedDataPath "$ROOT/build" -resolvePackageDependencies >/dev/null
 
 # Inject the release version into the build so Info.plist (and thus Sparkle's update
@@ -41,7 +41,7 @@ echo "==> Version: MARKETING_VERSION=$VERSION  CURRENT_PROJECT_VERSION=$BUILD_NU
 
 echo "==> Archiving (Release, Developer ID, hardened runtime)"
 rm -rf "$ARCHIVE" "$EXPORT"
-xcodebuild -project MenuMate.xcodeproj -scheme MenuMate -configuration Release \
+xcodebuild -project AnyWhere.xcodeproj -scheme AnyWhere -configuration Release \
   -derivedDataPath "$ROOT/build" \
   archive -archivePath "$ARCHIVE" \
   MARKETING_VERSION="$VERSION" \
@@ -55,14 +55,14 @@ xcodebuild -project MenuMate.xcodeproj -scheme MenuMate -configuration Release \
 echo "==> Exporting Developer ID app"
 xcodebuild -exportArchive -archivePath "$ARCHIVE" \
   -exportPath "$EXPORT" -exportOptionsPlist "$ROOT/scripts/ExportOptions.plist" | tail -3
-APP="$EXPORT/MenuMate.app"
+APP="$EXPORT/AnyWhere.app"
 
 echo "==> Building dmg"
 STAGE="$BUILD/dmg"; rm -rf "$STAGE"; mkdir -p "$STAGE"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 rm -f "$DMG"
-hdiutil create -volname "MenuMate" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
+hdiutil create -volname "AnyWhere" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 codesign --force --sign "$DEVELOPER_ID_APP" --timestamp "$DMG"
 
 echo "==> Notarizing dmg"

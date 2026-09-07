@@ -9,7 +9,7 @@
 
 import SwiftUI
 import AppKit
-import MenuMateCore
+import AnyWhereCore
 
 private let kHairline: CGFloat = 0.5
 
@@ -30,14 +30,14 @@ struct PvField<Content: View>: View {
         HStack(alignment: .firstTextBaseline, spacing: 11) {
             Text(label)
                 .font(.system(size: 12))
-                .foregroundStyle(MMColor.label2)
+                .foregroundStyle(AWColor.label2)
                 .frame(width: 70, alignment: .trailing)
             VStack(alignment: .leading, spacing: 3) {
                 content
                 if let hint {
                     Text(hint)
                         .font(.system(size: 11))
-                        .foregroundStyle(MMColor.label3)
+                        .foregroundStyle(AWColor.label3)
                 }
             }
         }
@@ -60,7 +60,8 @@ struct PvEditor: View {
     @State private var scriptPath = ""
     @State private var inlineSource = ""
     @State private var appBundleID = ""
-    @State private var utisText = ""
+    @State private var extensionsText = ""
+    @State private var extensionsEdited = false
     @State private var targetChoice = 0          // 0 文件和文件夹 1 仅文件 2 仅文件夹 3 目录空白处
     @State private var minSelText = ""           // 最少选中数（空=不限）
     @State private var maxSelText = ""           // 最多选中数（空=不限）
@@ -117,15 +118,15 @@ struct PvEditor: View {
                     }
                     Text(subtitle)
                         .font(.system(size: 11.5))
-                        .foregroundStyle(MMColor.label2)
+                        .foregroundStyle(AWColor.label2)
                 }
                 Spacer(minLength: 0)
-                MMSwitch(Binding(get: { action.isEnabled }, set: { action.isEnabled = $0; commit() }))
+                AWSwitch(Binding(get: { action.isEnabled }, set: { action.isEnabled = $0; commit() }))
             }
 
             VStack(alignment: .leading, spacing: 11) {
                 PvField(String(localized: "editor.menuTitle")) {
-                    MMField(Binding(get: { action.title }, set: { action.title = $0; commit() }),
+                    AWField(Binding(get: { action.title }, set: { action.title = $0; commit() }),
                             placeholder: String(localized: "editor.menuTitle"), width: 200)
                 }
                 PvField(String(localized: "editor.icon")) {
@@ -146,9 +147,9 @@ struct PvEditor: View {
                 if kindChoice == 0 {
                     PvField(String(localized: "editor.scriptPath"), hint: String(localized: "editor.scriptPathHint")) {
                         HStack(spacing: 8) {
-                            MMField($scriptPath, mono: true, width: 200)
+                            AWField($scriptPath, mono: true, width: 200)
                                 .onChange(of: scriptPath) { _ in commit() }
-                            MMButton(String(localized: "editor.choose"), size: .sm) { chooseScript() }
+                            AWButton(String(localized: "editor.choose"), size: .sm) { chooseScript() }
                         }
                     }
                 } else if kindChoice == 1 {
@@ -158,20 +159,20 @@ struct PvEditor: View {
                             .frame(width: 240, height: 72)
                             .scrollContentBackground(.hidden)
                             .padding(4)
-                            .background(MMColor.field)
-                            .clipShape(RoundedRectangle(cornerRadius: MMRadius.control, style: .continuous))
+                            .background(AWColor.field)
+                            .clipShape(RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous))
                             .overlay(
-                                RoundedRectangle(cornerRadius: MMRadius.control, style: .continuous)
-                                    .stroke(MMColor.border, lineWidth: kHairline)
+                                RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous)
+                                    .stroke(AWColor.border, lineWidth: kHairline)
                             )
                             .onChange(of: inlineSource) { _ in commit() }
                     }
                 } else {
                     PvField(String(localized: "editor.appBundleID")) {
                         HStack(spacing: 8) {
-                            MMField($appBundleID, mono: true, width: 200)
+                            AWField($appBundleID, mono: true, width: 200)
                                 .onChange(of: appBundleID) { _ in commit() }
-                            MMButton(String(localized: "editor.chooseApp"), size: .sm) { chooseApp() }
+                            AWButton(String(localized: "editor.chooseApp"), size: .sm) { chooseApp() }
                         }
                     }
                 }
@@ -184,23 +185,41 @@ struct PvEditor: View {
                     PvField(String(localized: "editor.selectionCount"), hint: String(localized: "editor.selectionCountHint")) {
                         VStack(alignment: .leading, spacing: 4) {
                             HStack(spacing: 8) {
-                                Text(String(localized: "editor.selMin")).font(.system(size: 12)).foregroundStyle(MMColor.label2)
+                                Text(String(localized: "editor.selMin")).font(.system(size: 12)).foregroundStyle(AWColor.label2)
                                 selCountField($minSelText)
-                                Text(String(localized: "editor.selMax")).font(.system(size: 12)).foregroundStyle(MMColor.label2)
+                                Text(String(localized: "editor.selMax")).font(.system(size: 12)).foregroundStyle(AWColor.label2)
                                 selCountField($maxSelText)
                             }
                             if selCountInvalid {
                                 Text(String(localized: "editor.selectionCountInvalid"))
-                                    .font(.system(size: 11)).foregroundStyle(MMColor.red)
+                                    .font(.system(size: 11)).foregroundStyle(AWColor.red)
                             }
                         }
                     }
                 }
-                PvField(String(localized: "editor.restrictType"), hint: String(localized: "editor.restrictTypeHint")) {
+                PvField(String(localized: "editor.extensions"), hint: String(localized: "editor.extensionsHint")) {
                     VStack(alignment: .leading, spacing: 6) {
-                        TypeCategoryChips(utisText: $utisText)
-                        MMField($utisText, mono: true, width: 240)
-                            .onChange(of: utisText) { _ in commit() }
+                        AWField($extensionsText, placeholder: "xlog, log, tar.gz", mono: true, width: 240)
+                            .onChange(of: extensionsText) { _ in
+                                guard loaded else { return }
+                                guard extensionsText != action.matching.extensions.joined(separator: ", ") else { return }
+                                extensionsEdited = true
+                                commit()
+                            }
+                        if !extensionsValid {
+                            Text(String(localized: "editor.extensionsInvalid"))
+                                .font(.system(size: 11)).foregroundStyle(AWColor.red)
+                        }
+                        if !extensionsEdited && (!action.matching.utis.isEmpty || action.matching.filenamePattern != nil) {
+                            Text(String(localized: "editor.legacyTypeHint"))
+                                .font(.system(size: 11)).foregroundStyle(AWColor.label2)
+                            Text((action.matching.utis + [action.matching.filenamePattern].compactMap { $0 }).joined(separator: ", "))
+                                .font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
+                            AWButton(String(localized: "editor.useExtensions"), size: .sm) {
+                                extensionsEdited = true
+                                commit()
+                            }
+                        }
                     }
                 }
                 PvField(String(localized: "editor.placement")) {
@@ -214,18 +233,18 @@ struct PvEditor: View {
                                 .map { $0.trimmingCharacters(in: .whitespaces) }
                                 .filter { !$0.isEmpty }.joined(separator: " · "))
                                 .font(.system(size: 11.5, design: .monospaced))
-                                .foregroundStyle(MMColor.label2)
+                                .foregroundStyle(AWColor.label2)
                         }
                     }
                 }
                 if variantChoice == 1 {
                     PvField(String(localized: "editor.fixedItems"), hint: String(localized: "editor.fixedItemsHint")) {
-                        MMField($variantsFixed, mono: true, width: 200)
+                        AWField($variantsFixed, mono: true, width: 200)
                             .onChange(of: variantsFixed) { _ in commit() }
                     }
                 } else if variantChoice == 2 {
                     PvField(String(localized: "editor.listDirectory"), hint: String(localized: "editor.listDirectoryHint")) {
-                        MMField($variantsDir, mono: true, width: 200)
+                        AWField($variantsDir, mono: true, width: 200)
                             .onChange(of: variantsDir) { _ in commit() }
                     }
                 }
@@ -237,12 +256,12 @@ struct PvEditor: View {
                                 .font(.system(size: 13))
                                 .frame(width: 56)
                                 .padding(.horizontal, 9).padding(.vertical, 4)
-                                .background(MMColor.field)
-                                .clipShape(RoundedRectangle(cornerRadius: MMRadius.control, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: MMRadius.control, style: .continuous)
-                                    .stroke(MMColor.border, lineWidth: kHairline))
+                                .background(AWColor.field)
+                                .clipShape(RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous)
+                                    .stroke(AWColor.border, lineWidth: kHairline))
                                 .onChange(of: timeoutSeconds) { _ in commit() }
-                            Text(String(localized: "editor.seconds")).font(.system(size: 12)).foregroundStyle(MMColor.label2)
+                            Text(String(localized: "editor.seconds")).font(.system(size: 12)).foregroundStyle(AWColor.label2)
                         }
                     }
                 }
@@ -250,21 +269,21 @@ struct PvEditor: View {
 
             HStack(spacing: 8) {
                 if kindChoice == 0 {
-                    MMButton(String(localized: "editor.openScriptInEditor"), systemImage: "chevron.left.forwardslash.chevron.right", size: .sm) {
+                    AWButton(String(localized: "editor.openScriptInEditor"), systemImage: "chevron.left.forwardslash.chevron.right", size: .sm) {
                         openScriptInEditor()
                     }
                 }
                 if kindChoice < 2 {   // 仅脚本类(文件 / 内联)可试运行
-                    MMButton(testRunning ? String(localized: "editor.testRunRunning") : String(localized: "editor.testRun"),
+                    AWButton(testRunning ? String(localized: "editor.testRunRunning") : String(localized: "editor.testRun"),
                              systemImage: "play", size: .sm) { testRun() }
                         .disabled(testRunning)
                 }
                 Spacer(minLength: 0)
                 if onDelete != nil {
-                    MMButton(String(localized: "editor.delete"), kind: .danger, size: .sm) { confirmDelete = true }
+                    AWButton(String(localized: "editor.delete"), kind: .danger, size: .sm) { confirmDelete = true }
                 }
                 if let onRestore {
-                    MMButton(String(localized: "editor.restorePreset"), size: .sm) { onRestore() }
+                    AWButton(String(localized: "editor.restorePreset"), size: .sm) { onRestore() }
                 }
             }
             .padding(.top, 2)
@@ -301,14 +320,14 @@ struct PvEditor: View {
             .font(.system(size: 13))
             .frame(width: 44)
             .padding(.horizontal, 9).padding(.vertical, 4)
-            .background(MMColor.field)
-            .clipShape(RoundedRectangle(cornerRadius: MMRadius.control, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: MMRadius.control, style: .continuous)
-                .stroke(MMColor.border, lineWidth: kHairline))
+            .background(AWColor.field)
+            .clipShape(RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous)
+                .stroke(AWColor.border, lineWidth: kHairline))
             .onChange(of: binding.wrappedValue) { _ in commit() }
     }
 
-    // MARK: 弹出选择(Menu 驱动真实交互,外观对照 MMPopup)
+    // MARK: 弹出选择(Menu 驱动真实交互,外观对照 AWPopup)
 
     private var targetPopup: some View {
         let labels = [String(localized: "editor.targetFilesAndFolders"), String(localized: "editor.targetFilesOnly"), String(localized: "editor.targetFoldersOnly"), String(localized: "editor.targetContainer")]
@@ -317,7 +336,7 @@ struct PvEditor: View {
                 Button(labels[i]) { targetChoice = i; commit() }
             }
         } label: {
-            MMPopup(labels[targetChoice], width: 150)
+            AWPopup(labels[targetChoice], width: 150)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -331,7 +350,7 @@ struct PvEditor: View {
                 Button(labels[i]) { placementChoice = i; commit() }
             }
         } label: {
-            MMPopup(labels[placementChoice], width: 180)
+            AWPopup(labels[placementChoice], width: 180)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -345,7 +364,7 @@ struct PvEditor: View {
                 Button(labels[i]) { variantChoice = i; commit() }
             }
         } label: {
-            MMPopup(labels[variantChoice], width: 120)
+            AWPopup(labels[variantChoice], width: 120)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -363,7 +382,8 @@ struct PvEditor: View {
         case .openWith(let id):
             kindChoice = 2; appBundleID = id
         }
-        utisText = action.matching.utis.joined(separator: ", ")
+        extensionsText = action.matching.extensions.joined(separator: ", ")
+        extensionsEdited = false
         minSelText = action.matching.minSelectionCount.map(String.init) ?? ""
         maxSelText = action.matching.maxSelectionCount.map(String.init) ?? ""
         targetChoice = [TargetKind.any, .files, .folders, .container].firstIndex(of: action.matching.targets) ?? 0
@@ -394,7 +414,7 @@ struct PvEditor: View {
     }
 
     private func performCommit() {
-        guard loaded else { return }
+        guard loaded, extensionsValid else { return }
         pendingCommit = nil
         var saved = action
         switch kindChoice {
@@ -402,8 +422,9 @@ struct PvEditor: View {
         case 1: saved.kind = .runScript(ScriptSpec(inlineSource: inlineSource, timeoutSeconds: timeoutSeconds))
         default: saved.kind = .openWith(appBundleID: appBundleID)
         }
-        saved.matching.utis = utisText.split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        if extensionsEdited {
+            saved.matching.setUserExtensions(MatchRule.parseExtensions(extensionsText))
+        }
         saved.matching.targets = [TargetKind.any, .files, .folders, .container][targetChoice]
         // 空/非正整数 = 不限;「目录空白处」无选中项,清空两者。
         func parseCount(_ s: String) -> Int? {
@@ -429,6 +450,10 @@ struct PvEditor: View {
         }
         action = saved
         onSave(saved)
+    }
+
+    private var extensionsValid: Bool {
+        MatchRule.parseExtensions(extensionsText).allSatisfy(MatchRule.isValidExtension)
     }
 
     // 试运行:用与真实执行完全相同的环境契约跑脚本,但捕获 stdout/stderr/退出码内联展示。
@@ -527,12 +552,13 @@ struct PvPackPanel: View {
     var action: MenuAction?
     var packName: String?
     var onSave: ((MenuAction) -> Void)?
+    var configurationFields: [PackSetting] = []
 
     // 静态预览占位(仅在无 action 时使用)。
     var title: String = "上传到图床"
     var previewPackName: String = "dev-tools"
     var menuTitle: String = "上传到图床"
-    var placement: String = "子菜单「MenuMate ▸」"
+    var placement: String = "子菜单「AnyWhere ▸」"
     var target: String = "仅文件"
     var uti: String = "public.image"
     var script: String = "#!/bin/zsh\n# upload-to-imagebed.zsh — 只读\n: ${IMGBED_TOKEN:?}\ncurl -fsS -F \"file=@$1\" $API | pbcopy"
@@ -584,12 +610,12 @@ struct PvPackPanel: View {
         HStack(spacing: 11) {
             Text(label)
                 .font(.system(size: 12))
-                .foregroundStyle(MMColor.label2)
+                .foregroundStyle(AWColor.label2)
                 .frame(width: 70, alignment: .trailing)
-            MMField(value: value, mono: mono, width: 150)
+            AWField(value: value, mono: mono, width: 150)
             Image(systemName: "lock.fill")
                 .font(.system(size: 11))
-                .foregroundStyle(MMColor.label3)
+                .foregroundStyle(AWColor.label3)
         }
         .opacity(0.7)
     }
@@ -605,15 +631,15 @@ struct PvPackPanel: View {
                     }
                     Text(String(localized: "panel.fromPackSubtitle"))
                         .font(.system(size: 11.5))
-                        .foregroundStyle(MMColor.label2)
+                        .foregroundStyle(AWColor.label2)
                 }
                 Spacer(minLength: 0)
                 if liveMode {
-                    MMSwitch(Binding(
+                    AWSwitch(Binding(
                         get: { action?.isEnabled ?? false },
                         set: { setEnabled($0) }))
                 } else {
-                    MMSwitch(.constant(isOn))
+                    AWSwitch(.constant(isOn))
                 }
             }
             Banner(String(localized: "panel.packReadOnlyBanner"),
@@ -621,10 +647,10 @@ struct PvPackPanel: View {
             VStack(alignment: .leading, spacing: 10) {
                 PvField(String(localized: "editor.menuTitle")) {
                     if liveMode {
-                        MMField($editTitle, placeholder: String(localized: "editor.menuTitle"), width: 200)
+                        AWField($editTitle, placeholder: String(localized: "editor.menuTitle"), width: 200)
                             .onChange(of: editTitle) { _ in commit() }
                     } else {
-                        MMField(value: menuTitle, width: 200)
+                        AWField(value: menuTitle, width: 200)
                     }
                 }
                 PvField(String(localized: "editor.placement")) {
@@ -632,17 +658,32 @@ struct PvPackPanel: View {
                         if liveMode {
                             placementPopup
                         } else {
-                            MMPopup(placement, width: 180)
+                            AWPopup(placement, width: 180)
                         }
-                        Text(String(localized: "panel.editable")).font(.system(size: 10.5)).foregroundStyle(MMColor.green)
+                        Text(String(localized: "panel.editable")).font(.system(size: 10.5)).foregroundStyle(AWColor.green)
                     }
                 }
                 lockRow(String(localized: "panel.target"), resolvedTarget)
                 lockRow(String(localized: "panel.restrictUTI"), resolvedUTI, mono: true)
+                if let action {
+                    lockRow(String(localized: "editor.extensions"),
+                            action.matching.extensions.isEmpty ? String(localized: "panel.utiUnrestricted")
+                            : action.matching.extensions.joined(separator: ", "), mono: true)
+                    if let pattern = action.matching.filenamePattern {
+                        lockRow(String(localized: "panel.filenamePattern"), pattern, mono: true)
+                    }
+                    Text(String(localized: "panel.matchingHint"))
+                        .font(.system(size: 11)).foregroundStyle(AWColor.label2)
+                }
+            }
+            if let action, !configurationFields.isEmpty {
+                PackConfigurationForm(actionID: action.id, fields: configurationFields)
+                    .id(action.id)
+                    .id(configurationFields)
             }
             CodeBlock(resolvedScript, lang: String(localized: "panel.langZshReadOnly"), maxHeight: 140)
             HStack(spacing: 8) {
-                MMButton(String(localized: "panel.openRepoHome"), systemImage: "arrow.up.right.square", size: .sm) {
+                AWButton(String(localized: "panel.openRepoHome"), systemImage: "arrow.up.right.square", size: .sm) {
                     if let s = resolvedRepoURL, let url = URL(string: s) { NSWorkspace.shared.open(url) }
                 }
             }
@@ -659,7 +700,7 @@ struct PvPackPanel: View {
                 Button(labels[i]) { placementChoice = i; commit() }
             }
         } label: {
-            MMPopup(labels[placementChoice], width: 180)
+            AWPopup(labels[placementChoice], width: 180)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -760,10 +801,10 @@ struct PanelCard: View {
             HStack(spacing: 11) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .stroke(MMColor.label4, lineWidth: 1)
+                        .stroke(AWColor.label4, lineWidth: 1)
                     Image(systemName: iconSymbol)
                         .font(.system(size: 20))
-                        .foregroundStyle(MMColor.label2)
+                        .foregroundStyle(AWColor.label2)
                 }
                 .frame(width: 36, height: 36)
                 VStack(alignment: .leading, spacing: 2) {
@@ -772,16 +813,16 @@ struct PanelCard: View {
                         if locked {
                             Image(systemName: "lock.fill")
                                 .font(.system(size: 12))
-                                .foregroundStyle(MMColor.label2)
+                                .foregroundStyle(AWColor.label2)
                         }
                         Badge(badge.0, tone: badge.1)
                     }
                     Text(bundle)
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(MMColor.label3)
+                        .foregroundStyle(AWColor.label3)
                 }
                 Spacer(minLength: 0)
-                MMSwitch($isOn)
+                AWSwitch($isOn)
                     .disabled(!toggleEnabled)
             }
 
@@ -790,25 +831,25 @@ struct PanelCard: View {
                 ControlDot(control)
                 Text(control == .hide ? String(localized: "panel.controlHideOnly") : String(localized: "panel.controlToggleOnly"))
                     .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(MMColor.label2)
+                    .foregroundStyle(AWColor.label2)
             }
             .padding(.horizontal, 11)
             .padding(.vertical, 7)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(MMColor.content)
+            .background(AWColor.content)
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(MMColor.hairline, lineWidth: kHairline))
+                .stroke(AWColor.hairline, lineWidth: kHairline))
 
             Text(note)
                 .font(.system(size: 12.5))
-                .foregroundStyle(MMColor.label2)
+                .foregroundStyle(AWColor.label2)
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let extra { extra }
 
-            MMButton(String(localized: "panel.manageInSystemSettings"), systemImage: "arrow.up.right.square", size: .sm) {
+            AWButton(String(localized: "panel.manageInSystemSettings"), systemImage: "arrow.up.right.square", size: .sm) {
                 ExtensionManager.openSystemSettings()
             }
             .padding(.top, 4)
@@ -818,71 +859,6 @@ struct PanelCard: View {
     }
 }
 
-// MARK: - 文件类型分类 chips(限定 UTI 的友好叠加层)
-//
-// 引擎层早已支持按类型过滤(MatchRule.utis + UTType 一致性,见 image-convert 预设);
-// 这里只把常见类型暴露成可点选 chips,底层仍写入 matching.utis:[String]——零 Core 改动。
-// chips 与下方自定义 UTI 文本框双向同步(共享同一份逗号串);长尾/任意 UTI 仍可手填,
-// 不被 chips 清除(toggle 只增删该分类对应的那一个 UTI)。
-
-/// 友好分类 → 规范 UTI(UTType 一致性会命中其所有具体子类型)。
-private let kTypeCategories: [(name: String, uti: String)] = [
-    (String(localized: "panel.typeImage"), "public.image"),
-    (String(localized: "panel.typeVideo"), "public.movie"),
-    (String(localized: "panel.typeAudio"), "public.audio"),
-    (String(localized: "panel.typePDF"), "com.adobe.pdf"),
-    (String(localized: "panel.typeText"), "public.text"),
-    (String(localized: "panel.typeSourceCode"), "public.source-code"),
-    (String(localized: "panel.typeArchive"), "public.archive"),
-    (String(localized: "panel.typeApplication"), "com.apple.application"),
-]
-
-struct TypeCategoryChips: View {
-    @Binding var utisText: String
-
-    private var current: [String] {
-        utisText.split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-    }
-
-    var body: some View {
-        FlowLayout(spacing: 6, lineSpacing: 6) {
-            ForEach(kTypeCategories, id: \.uti) { cat in
-                let on = current.contains(cat.uti)
-                TypeChip(title: cat.name, selected: on) { toggle(cat.uti, to: !on) }
-            }
-        }
-        .frame(width: 240, alignment: .leading)
-    }
-
-    // 只改 utisText;持久化(commit)由下方 MMField 的 onChange(of: utisText) 统一触发。
-    private func toggle(_ uti: String, to on: Bool) {
-        var list = current
-        if on { if !list.contains(uti) { list.append(uti) } }
-        else { list.removeAll { $0 == uti } }
-        utisText = list.joined(separator: ", ")
-    }
-}
-
-private struct TypeChip: View {
-    let title: String
-    let selected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 11, weight: selected ? .semibold : .regular))
-                .foregroundStyle(selected ? MMColor.accent : MMColor.label2)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(selected ? MMColor.accentTint : MMColor.control))
-                .overlay(Capsule().stroke(selected ? MMColor.accent.opacity(0.5) : MMColor.hairline,
-                                          lineWidth: kHairline))
-        }
-        .buttonStyle(.plain)
-    }
-}
 
 // MARK: - 试运行结果
 
@@ -904,24 +880,24 @@ private struct TestRunSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
-                    .foregroundStyle(ok ? MMColor.green : MMColor.red)
+                    .foregroundStyle(ok ? AWColor.green : AWColor.red)
                 Text(String(localized: "editor.testRunTitle")).font(.system(size: 15, weight: .semibold))
                 Spacer(minLength: 0)
                 Text(r.timedOut
                      ? String(localized: "editor.testRunTimedOut")
                      : String(format: String(localized: ok ? "editor.testRunSuccess" : "editor.testRunFailed"), Int(r.exitCode)))
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(ok ? MMColor.green : MMColor.red)
+                    .foregroundStyle(ok ? AWColor.green : AWColor.red)
             }
             if let v = outcome.variant {
                 Text("\(String(localized: "editor.testRunVariant")): \(v)")
-                    .font(.system(size: 11.5)).foregroundStyle(MMColor.label2)
+                    .font(.system(size: 11.5)).foregroundStyle(AWColor.label2)
             }
             outputBlock(String(localized: "editor.testRunStdout"), r.stdout)
             if !r.stderr.isEmpty { outputBlock(String(localized: "editor.testRunStderr"), r.stderr) }
             HStack {
                 Spacer(minLength: 0)
-                MMButton(String(localized: "editor.testRunClose"), kind: .primary, size: .sm) { dismiss() }
+                AWButton(String(localized: "editor.testRunClose"), kind: .primary, size: .sm) { dismiss() }
             }
         }
         .padding(18)
@@ -930,19 +906,19 @@ private struct TestRunSheet: View {
 
     @ViewBuilder private func outputBlock(_ label: String, _ text: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.system(size: 11, weight: .semibold)).foregroundStyle(MMColor.label3)
+            Text(label).font(.system(size: 11, weight: .semibold)).foregroundStyle(AWColor.label3)
             ScrollView {
                 Text(text.isEmpty ? String(localized: "editor.testRunNoOutput") : text)
                     .font(.system(size: 11.5, design: .monospaced))
-                    .foregroundStyle(MMColor.label)
+                    .foregroundStyle(AWColor.label)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
             }
             .frame(maxHeight: .infinity)
             .padding(8)
-            .background(MMColor.field)
+            .background(AWColor.field)
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(MMColor.border, lineWidth: kHairline))
+            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(AWColor.border, lineWidth: kHairline))
         }
     }
 }

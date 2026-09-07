@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "name": "MenuMate Example Pack",
-  "author": "MenuMate",
+  "name": "AnyWhere Example Pack",
+  "author": "AnyWhere",
   "description": "参考扩展包:复制无扩展名文件名、统计所选大小、转换图片格式。可直接 fork 作为你自己扩展包的模板。",
   "icon": "shippingbox",
   "actions": [

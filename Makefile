@@ -15,11 +15,11 @@ test-presets:
 	@zsh scripts/test-presets.sh
 
 build: gen
-	xcodebuild -project MenuMate.xcodeproj -scheme MenuMate -configuration Debug \
+	xcodebuild -project AnyWhere.xcodeproj -scheme AnyWhere -configuration Debug \
 	  -derivedDataPath build build
 
 run: build
-	open build/Build/Products/Debug/MenuMate.app
+	open build/Build/Products/Debug/AnyWhere.app
 
 # 签名 + 公证 + dmg + Sparkle 签名(需 Developer ID 证书与公证凭据,见 docs/RELEASING.md)
 # 用法: make release VERSION=1.0.0

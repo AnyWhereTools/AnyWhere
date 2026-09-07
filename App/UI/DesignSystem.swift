@@ -1,7 +1,7 @@
-// DesignSystem.swift — MenuMate SwiftUI 设计系统基础层
+// DesignSystem.swift — AnyWhere SwiftUI 设计系统基础层
 //
 // 精确复刻 docs/design/hifi/{tokens.css, ui.jsx} 与 docs/design/HANDOFF.md。
-// 这是后续所有界面的共享词汇:颜色 token、圆角常量、带 MM 前缀的组件。
+// 这是后续所有界面的共享词汇:颜色 token、圆角常量、带 AW 前缀的组件。
 //
 // 设计原则(对照 HANDOFF「Design Tokens」末注与本任务指引):
 // - 优先用 SwiftUI/AppKit 语义色自动适配浅深 + 用户强调色;
@@ -10,11 +10,11 @@
 
 import SwiftUI
 import AppKit
-import MenuMateCore
+import AnyWhereCore
 
 // MARK: - 圆角 token(对照 ui.jsx / HANDOFF「圆角」)
 
-enum MMRadius {
+enum AWRadius {
     static let window: CGFloat = 11   // Win
     static let card: CGFloat = 9      // Group / 卡片
     static let control: CGFloat = 6   // 按钮 / 文本框 / 弹出
@@ -28,7 +28,7 @@ enum MMRadius {
 //
 // 语义色优先;结构背景用 NSColor 桥接自动适配浅深。
 
-enum MMColor {
+enum AWColor {
     // 强调与状态色 —— 直接用系统语义色,macOS 自动浅深适配 + 跟随用户强调色。
     static let accent = Color.accentColor
     static let red = Color.red
@@ -38,7 +38,7 @@ enum MMColor {
 
     // accent 淡底(token: --accent-tint = color-mix accent 13% / 深色 26%)。
     static var accentTint: Color {
-        Color.accentColor.opacity(MMColor.isDark ? 0.26 : 0.13)
+        Color.accentColor.opacity(AWColor.isDark ? 0.26 : 0.13)
     }
 
     // 文本三阶(label / label-2 / label-3)。
@@ -175,7 +175,7 @@ struct ActionIconView: View {
                     )
                     .overlay( // 外描边,贴合图片边缘
                         RoundedRectangle(cornerRadius: radius, style: .continuous)
-                            .stroke(MMColor.border, lineWidth: kHairline)
+                            .stroke(AWColor.border, lineWidth: kHairline)
                     )
                     .shadow(color: Color.black.opacity(0.2), radius: 0.5, x: 0, y: 0.5)
             } else {
@@ -185,11 +185,11 @@ struct ActionIconView: View {
     }
 }
 
-// MARK: - MMSwitch(系统原生开关,绿开灰关)
+// MARK: - AWSwitch(系统原生开关,绿开灰关)
 //
 // 用系统 Toggle(.switch),完全满足设计稿 38×23 绿/灰开关形态。
 
-struct MMSwitch: View {
+struct AWSwitch: View {
     @Binding var isOn: Bool
     var scale: CGFloat = 1
 
@@ -206,9 +206,9 @@ struct MMSwitch: View {
     }
 }
 
-// MARK: - MMButton(真实 Button,对照 ui.jsx kinds 表)
+// MARK: - AWButton(真实 Button,对照 ui.jsx kinds 表)
 
-enum MMButtonKind {
+enum AWButtonKind {
     case normal     // default: 控件底 + label 字
     case primary    // accent 填充 + 白字
     case danger     // 控件底 + 红字
@@ -217,7 +217,7 @@ enum MMButtonKind {
     case plain      // 透明 + accent 字
 }
 
-enum MMButtonSize {
+enum AWButtonSize {
     case sm, md
     var font: Font { self == .sm ? .system(size: 12, weight: .medium) : .system(size: 13, weight: .medium) }
     var hPad: CGFloat { self == .sm ? 10 : 13 }
@@ -225,17 +225,17 @@ enum MMButtonSize {
     var plainHPad: CGFloat { self == .sm ? 4 : 6 } // plain 收窄左右内距
 }
 
-struct MMButton: View {
+struct AWButton: View {
     let title: String
     var systemImage: String?
-    var kind: MMButtonKind = .normal
-    var size: MMButtonSize = .md
+    var kind: AWButtonKind = .normal
+    var size: AWButtonSize = .md
     var action: () -> Void = {}
 
     init(_ title: String,
          systemImage: String? = nil,
-         kind: MMButtonKind = .normal,
-         size: MMButtonSize = .md,
+         kind: AWButtonKind = .normal,
+         size: AWButtonSize = .md,
          action: @escaping () -> Void = {}) {
         self.title = title
         self.systemImage = systemImage
@@ -258,7 +258,7 @@ struct MMButton: View {
             .padding(.horizontal, kind == .plain ? size.plainHPad : size.hPad)
             .padding(.vertical, size.vPad)
             .background(background)
-            .clipShape(RoundedRectangle(cornerRadius: MMRadius.control, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous))
             .overlay(strokeOverlay)
         }
         .buttonStyle(.plain)
@@ -266,21 +266,21 @@ struct MMButton: View {
 
     private var foreground: Color {
         switch kind {
-        case .normal:     return MMColor.label
-        case .primary:    return MMColor.onAccent
-        case .danger:     return MMColor.red
-        case .dangerFill: return MMColor.onAccent
-        case .tinted:     return MMColor.accent
-        case .plain:      return MMColor.accent
+        case .normal:     return AWColor.label
+        case .primary:    return AWColor.onAccent
+        case .danger:     return AWColor.red
+        case .dangerFill: return AWColor.onAccent
+        case .tinted:     return AWColor.accent
+        case .plain:      return AWColor.accent
         }
     }
 
     @ViewBuilder private var background: some View {
         switch kind {
-        case .normal, .danger: MMColor.control
-        case .primary:         MMColor.accent
-        case .dangerFill:      MMColor.red
-        case .tinted:          MMColor.accentTint
+        case .normal, .danger: AWColor.control
+        case .primary:         AWColor.accent
+        case .dangerFill:      AWColor.red
+        case .tinted:          AWColor.accentTint
         case .plain:           Color.clear
         }
     }
@@ -288,8 +288,8 @@ struct MMButton: View {
     @ViewBuilder private var strokeOverlay: some View {
         switch kind {
         case .normal, .danger:
-            RoundedRectangle(cornerRadius: MMRadius.control, style: .continuous)
-                .stroke(MMColor.border, lineWidth: kHairline)
+            RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous)
+                .stroke(AWColor.border, lineWidth: kHairline)
         default:
             EmptyView()
         }
@@ -355,12 +355,12 @@ struct FlowLayout: Layout {
     }
 }
 
-// MARK: - MMPopup(展示态胶囊 + 蓝色 chevron.up.chevron.down 方块尾标)
+// MARK: - AWPopup(展示态胶囊 + 蓝色 chevron.up.chevron.down 方块尾标)
 //
 // 对照 ui.jsx Popup:控件底胶囊,尾部 16×16 accent 圆角方内白色上下箭头。
 // 仅展示组件;需要真实交互的调用方自行用 Menu / Picker(.menu)。
 
-struct MMPopup: View {
+struct AWPopup: View {
     let value: String
     var width: CGFloat?
 
@@ -373,13 +373,13 @@ struct MMPopup: View {
         HStack(spacing: 8) {
             Text(value)
                 .font(.system(size: 13))
-                .foregroundStyle(MMColor.label)
+                .foregroundStyle(AWColor.label)
                 .lineLimit(1)
                 .truncationMode(.tail)
             if width != nil { Spacer(minLength: 0) }
             ZStack {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(MMColor.accent)
+                    .fill(AWColor.accent)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(.white)
@@ -390,20 +390,20 @@ struct MMPopup: View {
         .padding(.trailing, 6)
         .padding(.vertical, 4)
         .frame(width: width, alignment: .leading)
-        .background(MMColor.control)
-        .clipShape(RoundedRectangle(cornerRadius: MMRadius.control, style: .continuous))
+        .background(AWColor.control)
+        .clipShape(RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: MMRadius.control, style: .continuous)
-                .stroke(MMColor.border, lineWidth: kHairline)
+            RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous)
+                .stroke(AWColor.border, lineWidth: kHairline)
         )
     }
 }
 
-// MARK: - MMField(圆角描边输入框 + 只读展示重载)
+// MARK: - AWField(圆角描边输入框 + 只读展示重载)
 //
 // 对照 ui.jsx Field:圆角 6 描边,mono 用等宽字体。
 
-struct MMField: View {
+struct AWField: View {
     @Binding var text: String
     var placeholder: String = ""
     var mono: Bool = false
@@ -433,15 +433,15 @@ struct MMField: View {
         TextField(placeholder, text: $text)
             .textFieldStyle(.plain)
             .font(font)
-            .foregroundStyle(MMColor.label)
+            .foregroundStyle(AWColor.label)
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
             .frame(width: width, alignment: .leading)
-            .background(MMColor.field)
-            .clipShape(RoundedRectangle(cornerRadius: MMRadius.control, style: .continuous))
+            .background(AWColor.field)
+            .clipShape(RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: MMRadius.control, style: .continuous)
-                    .stroke(MMColor.border, lineWidth: kHairline)
+                RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous)
+                    .stroke(AWColor.border, lineWidth: kHairline)
             )
     }
 }
@@ -453,20 +453,20 @@ enum BadgeTone {
 
     var fg: Color {
         switch self {
-        case .gray:   return MMColor.label2
-        case .accent: return MMColor.accent
-        case .green:  return MMColor.green
-        case .orange: return MMColor.orange
-        case .red:    return MMColor.red
+        case .gray:   return AWColor.label2
+        case .accent: return AWColor.accent
+        case .green:  return AWColor.green
+        case .orange: return AWColor.orange
+        case .red:    return AWColor.red
         }
     }
     var bg: Color {
         switch self {
-        case .gray:   return MMColor.label.opacity(0.08)
-        case .accent: return MMColor.accentTint
-        case .green:  return MMColor.green.opacity(MMColor.isDark ? 0.22 : 0.16)
-        case .orange: return MMColor.orange.opacity(MMColor.isDark ? 0.22 : 0.16)
-        case .red:    return MMColor.red.opacity(MMColor.isDark ? 0.22 : 0.14)
+        case .gray:   return AWColor.label.opacity(0.08)
+        case .accent: return AWColor.accentTint
+        case .green:  return AWColor.green.opacity(AWColor.isDark ? 0.22 : 0.16)
+        case .orange: return AWColor.orange.opacity(AWColor.isDark ? 0.22 : 0.16)
+        case .red:    return AWColor.red.opacity(AWColor.isDark ? 0.22 : 0.14)
         }
     }
 }
@@ -488,18 +488,18 @@ struct Badge: View {
             .padding(.vertical, 1.5)
             .padding(.horizontal, 7)
             .background(tone.bg)
-            .clipShape(RoundedRectangle(cornerRadius: MMRadius.badge, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: AWRadius.badge, style: .continuous))
             .fixedSize()
     }
 }
 
-// MARK: - MMGroup(分组列表卡片,直接子视图间自动插分隔线)
+// MARK: - AWGroup(分组列表卡片,直接子视图间自动插分隔线)
 //
 // 对照 ui.jsx Group:卡片圆角 9 + 0.5px hairline 描边,
 // 行间 0.5px 分隔(左缩进 14);header 11/600 大写 letterSpacing;footer 11.5 灰。
 // 用 _VariadicView 在直接子视图间插分隔线(无需调用方手动加 Divider)。
 
-struct MMGroup<Content: View>: View {
+struct AWGroup<Content: View>: View {
     var header: String?
     var footer: String?
     @ViewBuilder var content: Content
@@ -516,23 +516,23 @@ struct MMGroup<Content: View>: View {
                 Text(header.uppercased())
                     .font(.system(size: 11, weight: .semibold))
                     .tracking(0.44) // ≈ .04em @ 11px
-                    .foregroundStyle(MMColor.label2)
+                    .foregroundStyle(AWColor.label2)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 6)
             }
-            _VariadicView.Tree(MMGroupLayout()) {
+            _VariadicView.Tree(AWGroupLayout()) {
                 content
             }
-            .background(MMColor.card)
-            .clipShape(RoundedRectangle(cornerRadius: MMRadius.card, style: .continuous))
+            .background(AWColor.card)
+            .clipShape(RoundedRectangle(cornerRadius: AWRadius.card, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: MMRadius.card, style: .continuous)
-                    .stroke(MMColor.hairline, lineWidth: kHairline)
+                RoundedRectangle(cornerRadius: AWRadius.card, style: .continuous)
+                    .stroke(AWColor.hairline, lineWidth: kHairline)
             )
             if let footer {
                 Text(footer)
                     .font(.system(size: 11.5))
-                    .foregroundStyle(MMColor.label2)
+                    .foregroundStyle(AWColor.label2)
                     .lineSpacing(2)
                     .padding(.horizontal, 16)
                     .padding(.top, 6)
@@ -542,14 +542,14 @@ struct MMGroup<Content: View>: View {
 }
 
 /// 在每个直接子视图之间插入左缩进 14 的 0.5px 分隔线。
-private struct MMGroupLayout: _VariadicView_UnaryViewRoot {
+private struct AWGroupLayout: _VariadicView_UnaryViewRoot {
     @ViewBuilder
     func body(children: _VariadicView.Children) -> some View {
         VStack(spacing: 0) {
             ForEach(Array(children.enumerated()), id: \.element.id) { index, child in
                 if index > 0 {
                     Rectangle()
-                        .fill(MMColor.separator)
+                        .fill(AWColor.separator)
                         .frame(height: kHairline)
                         .padding(.leading, 14)
                 }
@@ -559,9 +559,9 @@ private struct MMGroupLayout: _VariadicView_UnaryViewRoot {
     }
 }
 
-// MARK: - MMRow(水平列表行,pad 8×14 gap 10 字号 13)
+// MARK: - AWRow(水平列表行,pad 8×14 gap 10 字号 13)
 
-struct MMRow<Content: View>: View {
+struct AWRow<Content: View>: View {
     @ViewBuilder var content: Content
 
     init(@ViewBuilder content: () -> Content) {
@@ -573,7 +573,7 @@ struct MMRow<Content: View>: View {
             content
         }
         .font(.system(size: 13))
-        .foregroundStyle(MMColor.label)
+        .foregroundStyle(AWColor.label)
         .padding(.vertical, 8)
         .padding(.horizontal, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -590,18 +590,18 @@ enum BannerTone {
 
     var fg: Color {
         switch self {
-        case .orange: return MMColor.orange
-        case .red:    return MMColor.red
-        case .accent: return MMColor.accent
-        case .info:   return MMColor.label2
+        case .orange: return AWColor.orange
+        case .red:    return AWColor.red
+        case .accent: return AWColor.accent
+        case .info:   return AWColor.label2
         }
     }
     var bg: Color {
         switch self {
-        case .orange: return MMColor.orange.opacity(MMColor.isDark ? 0.20 : 0.14)
-        case .red:    return MMColor.red.opacity(MMColor.isDark ? 0.20 : 0.12)
-        case .accent: return MMColor.accentTint
-        case .info:   return MMColor.label.opacity(0.07)
+        case .orange: return AWColor.orange.opacity(AWColor.isDark ? 0.20 : 0.14)
+        case .red:    return AWColor.red.opacity(AWColor.isDark ? 0.20 : 0.12)
+        case .accent: return AWColor.accentTint
+        case .info:   return AWColor.label.opacity(0.07)
         }
     }
 }
@@ -629,7 +629,7 @@ struct Banner<Trailing: View>: View {
                 .foregroundStyle(tone.fg)
             Text(text)
                 .font(.system(size: 12.5))
-                .foregroundStyle(MMColor.label)
+                .foregroundStyle(AWColor.label)
                 .lineSpacing(1.5)
                 .frame(maxWidth: .infinity, alignment: .leading)
             trailing
@@ -637,10 +637,10 @@ struct Banner<Trailing: View>: View {
         .padding(.vertical, 9)
         .padding(.horizontal, 12)
         .background(tone.bg)
-        .clipShape(RoundedRectangle(cornerRadius: MMRadius.banner, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: AWRadius.banner, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: MMRadius.banner, style: .continuous)
-                .stroke(MMColor.border, lineWidth: kHairline)
+            RoundedRectangle(cornerRadius: AWRadius.banner, style: .continuous)
+                .stroke(AWColor.border, lineWidth: kHairline)
         )
     }
 }
@@ -680,16 +680,16 @@ struct CodeBlock: View {
             HStack(spacing: 6) {
                 Image(systemName: "terminal")
                     .font(.system(size: 12))
-                    .foregroundStyle(MMColor.label2)
+                    .foregroundStyle(AWColor.label2)
                 Text(lang)
                     .font(.system(size: 10.5, design: .monospaced))
-                    .foregroundStyle(MMColor.label2)
+                    .foregroundStyle(AWColor.label2)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .frame(maxWidth: .infinity, alignment: .leading)
             .overlay(alignment: .bottom) {
-                Rectangle().fill(MMColor.separator).frame(height: kHairline)
+                Rectangle().fill(AWColor.separator).frame(height: kHairline)
             }
 
             // 代码区(行号 + 高亮)
@@ -699,10 +699,10 @@ struct CodeBlock: View {
                         HStack(alignment: .top, spacing: 0) {
                             Text("\(i + 1)")
                                 .font(.system(size: 11.5, design: .monospaced))
-                                .foregroundStyle(MMColor.label4)
+                                .foregroundStyle(AWColor.label4)
                                 .frame(width: 30, alignment: .trailing)
                                 .padding(.trailing, 12)
-                            Text(MMSyntax.highlightZsh(ln))
+                            Text(AWSyntax.highlightZsh(ln))
                                 .font(.system(size: 11.5, design: .monospaced))
                                 .lineSpacing(11.5 * 0.65) // line-height 1.65
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -715,17 +715,17 @@ struct CodeBlock: View {
             }
             .frame(maxHeight: maxHeight)
         }
-        .background(MMColor.codeBg)
-        .clipShape(RoundedRectangle(cornerRadius: MMRadius.code, style: .continuous))
+        .background(AWColor.codeBg)
+        .clipShape(RoundedRectangle(cornerRadius: AWRadius.code, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: MMRadius.code, style: .continuous)
-                .stroke(MMColor.border, lineWidth: kHairline)
+            RoundedRectangle(cornerRadius: AWRadius.code, style: .continuous)
+                .stroke(AWColor.border, lineWidth: kHairline)
         )
     }
 }
 
 /// 基础 zsh 高亮(对照 ui.jsx hl):注释 / 关键字 / $变量 / 字符串。
-enum MMSyntax {
+enum AWSyntax {
     private static let keywords: Set<String> = [
         "if", "then", "fi", "for", "do", "done", "in", "local", "function",
         "return", "case", "esac", "while", "echo", "exit", "set",
@@ -737,7 +737,7 @@ enum MMSyntax {
 
     static func highlightZsh(_ line: String) -> AttributedString {
         var result = AttributedString(line)
-        result.foregroundColor = MMColor.label
+        result.foregroundColor = AWColor.label
 
         // 整行注释(以可选空白 + # 开头):整行灰。
         if let firstNonWS = line.first(where: { !$0.isWhitespace }), firstNonWS == "#" {
@@ -795,22 +795,22 @@ struct ControlDot: View {
         switch kind {
         case .full:
             Circle()
-                .fill(MMColor.accent)
+                .fill(AWColor.accent)
                 .frame(width: size, height: size)
         case .hide:
             // 橙描边环 + 左半填充半月。
             ZStack {
                 Circle()
                     .trim(from: 0.5, to: 1.0) // 左半(从底经左到顶)
-                    .fill(MMColor.orange)
+                    .fill(AWColor.orange)
                 Circle()
-                    .stroke(MMColor.orange, lineWidth: max(1, size * 0.13))
+                    .stroke(AWColor.orange, lineWidth: max(1, size * 0.13))
             }
             .frame(width: size, height: size)
             .rotationEffect(.degrees(180)) // 让填充落在视觉左半
         case .opaque:
             Circle()
-                .stroke(MMColor.label3, lineWidth: max(1, size * 0.13))
+                .stroke(AWColor.label3, lineWidth: max(1, size * 0.13))
                 .frame(width: size, height: size)
         }
     }
@@ -833,15 +833,15 @@ struct Grip: View {
                 }
             }
         }
-        .foregroundStyle(MMColor.label2.opacity(0.45))
+        .foregroundStyle(AWColor.label2.opacity(0.45))
     }
 }
 
-// MARK: - MMDot(小圆点 + 卡片色描边,如"有更新"蓝点)
+// MARK: - AWDot(小圆点 + 卡片色描边,如"有更新"蓝点)
 //
 // 对照 ui.jsx Dot:实心圆 + 2px 卡片色外环。
 
-struct MMDot: View {
+struct AWDot: View {
     var color: Color = .accentColor
     var size: CGFloat = 8
 
@@ -855,7 +855,7 @@ struct MMDot: View {
             .fill(color)
             .frame(width: size, height: size)
             .overlay(
-                Circle().stroke(MMColor.card, lineWidth: 2)
+                Circle().stroke(AWColor.card, lineWidth: 2)
             )
     }
 }
@@ -877,7 +877,7 @@ extension Color {
     DesignSystemPreview()
         .frame(width: 560)
         .padding(20)
-        .background(MMColor.content)
+        .background(AWColor.content)
 }
 
 private struct DesignSystemPreview: View {
@@ -900,33 +900,33 @@ private struct DesignSystemPreview: View {
 
                 // 按钮
                 HStack(spacing: 8) {
-                    MMButton("普通")
-                    MMButton("主要", kind: .primary)
-                    MMButton("危险", kind: .danger)
-                    MMButton("危险填充", kind: .dangerFill)
-                    MMButton("淡色", kind: .tinted)
-                    MMButton("纯文本", kind: .plain)
+                    AWButton("普通")
+                    AWButton("主要", kind: .primary)
+                    AWButton("危险", kind: .danger)
+                    AWButton("危险填充", kind: .dangerFill)
+                    AWButton("淡色", kind: .tinted)
+                    AWButton("纯文本", kind: .plain)
                 }
                 HStack(spacing: 8) {
-                    MMButton("小号", systemImage: "trash", size: .sm)
-                    MMButton("中号", systemImage: "arrow.clockwise", kind: .primary, size: .md)
+                    AWButton("小号", systemImage: "trash", size: .sm)
+                    AWButton("中号", systemImage: "arrow.clockwise", kind: .primary, size: .md)
                 }
 
                 // 分段 + 弹出 + 开关
                 HStack(spacing: 12) {
-                    Segmented(["全部", "仅 MenuMate", "仅系统"], selection: $seg)
+                    Segmented(["全部", "仅 AnyWhere", "仅系统"], selection: $seg)
                         .frame(width: 240)
-                    MMSwitch($on1)
-                    MMSwitch($on2)
+                    AWSwitch($on1)
+                    AWSwitch($on2)
                 }
-                MMPopup("文件和文件夹", width: 180)
+                AWPopup("文件和文件夹", width: 180)
 
                 // 字段
                 HStack(spacing: 8) {
-                    MMField($fieldText, placeholder: "菜单标题")
+                    AWField($fieldText, placeholder: "菜单标题")
                         .frame(width: 160)
-                    MMField($monoText, mono: true, width: 200)
-                    MMField(value: "只读", width: 80)
+                    AWField($monoText, mono: true, width: 200)
+                    AWField(value: "只读", width: 80)
                 }
 
                 // 徽章
@@ -944,39 +944,39 @@ private struct DesignSystemPreview: View {
                         ControlDot(.full); ControlDot(.hide); ControlDot(.opaque)
                     }
                     Grip()
-                    MMDot()
-                    MMDot(color: .orange, size: 10)
+                    AWDot()
+                    AWDot(color: .orange, size: 10)
                 }
 
                 // 分组列表
-                MMGroup(header: "右键菜单", footer: "拖动排序 · 点选编辑。") {
-                    MMRow {
+                AWGroup(header: "右键菜单", footer: "拖动排序 · 点选编辑。") {
+                    AWRow {
                         Grip()
                         AppIcon("photo", size: 20, hue: .blue)
                         Text("图片转换")
                         Spacer()
-                        MMSwitch($on1, scale: 0.85)
+                        AWSwitch($on1, scale: 0.85)
                     }
-                    MMRow {
+                    AWRow {
                         ControlDot(.hide)
                         Image(systemName: "square.grid.2x2")
                         Text("快速操作")
                         Spacer()
                         Badge("系统服务", tone: .orange)
                     }
-                    MMRow {
+                    AWRow {
                         ControlDot(.opaque)
                         Image(systemName: "lock.fill")
                         Text("第三方扩展")
                         Spacer()
-                        MMSwitch($on2, scale: 0.85)
+                        AWSwitch($on2, scale: 0.85)
                     }
                 }
 
                 // 横幅
                 Banner("该仓库的脚本将以你的用户权限运行,请逐一审查。", tone: .red)
                 Banner("脚本来自扩展包,只读。fork 仓库后可重新导入。", tone: .accent, systemImage: "info.circle.fill") {
-                    MMButton("查看", kind: .plain, size: .sm)
+                    AWButton("查看", kind: .plain, size: .sm)
                 }
 
                 // 代码块

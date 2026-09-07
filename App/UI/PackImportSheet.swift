@@ -12,7 +12,7 @@
 
 import SwiftUI
 import AppKit
-import MenuMateCore
+import AnyWhereCore
 
 // MARK: - SheetHead(对照 jsx SheetHead)
 
@@ -32,25 +32,25 @@ private struct SheetHead: View {
                 if let sub {
                     Text(sub)
                         .font(.system(size: 11.5, design: .monospaced))
-                        .foregroundStyle(MMColor.label2)
+                        .foregroundStyle(AWColor.label2)
                 }
             }
             Spacer(minLength: 0)
             if let step {
                 Text(String(format: String(localized: "packImport.stepIndicator"), step))
                     .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(MMColor.label2)
+                    .foregroundStyle(AWColor.label2)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 3)
-                    .background(MMColor.control)
-                    .clipShape(RoundedRectangle(cornerRadius: MMRadius.control, style: .continuous))
+                    .background(AWColor.control)
+                    .clipShape(RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous))
             }
         }
         .padding(.horizontal, 20)
         .padding(.top, 16)
         .padding(.bottom, 12)
         .overlay(alignment: .bottom) {
-            Rectangle().fill(MMColor.separator).frame(height: 0.5)
+            Rectangle().fill(AWColor.separator).frame(height: 0.5)
         }
     }
 }
@@ -62,7 +62,7 @@ private struct SheetFooter<Content: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Rectangle().fill(MMColor.separator).frame(height: 0.5)
+            Rectangle().fill(AWColor.separator).frame(height: 0.5)
             HStack(spacing: 9) {
                 content
             }
@@ -103,6 +103,7 @@ struct PackImportSheet: View {
     @State private var selectedActionID: String?
     /// 已确认知悉「未声明文件」(仅当包内存在这类文件时作为额外放行条件)。
     @State private var extrasAck = false
+    @State private var importTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -115,7 +116,8 @@ struct PackImportSheet: View {
             }
         }
         .frame(width: sheetWidth, height: 500)
-        .background(MMColor.content)
+        .background(AWColor.content)
+        .onDisappear { discardImport() }
     }
 
     private var sheetWidth: CGFloat {
@@ -134,24 +136,31 @@ struct PackImportSheet: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text(String(localized: "packImport.urlPrompt"))
                     .font(.system(size: 12.5))
-                    .foregroundStyle(MMColor.label2)
-                MMField($urlText, placeholder: "lihua/menumate-dev-tools", mono: true)
+                    .foregroundStyle(AWColor.label2)
+                AWField($urlText, placeholder: "lihua/anywhere-dev-tools", mono: true)
                     .frame(maxWidth: .infinity)
                     .disabled(isCloning)
                 HStack(spacing: 6) {
                     Image(systemName: "info.circle")
                         .font(.system(size: 13))
-                        .foregroundStyle(MMColor.label3)
+                        .foregroundStyle(AWColor.label3)
                     Text(String(localized: "packImport.urlHint"))
                         .font(.system(size: 11))
-                        .foregroundStyle(MMColor.label3)
+                        .foregroundStyle(AWColor.label3)
                 }
+                AWButton(String(localized: "packImport.chooseLocalFolder"), systemImage: "folder") {
+                    chooseLocalFolder()
+                }
+                .disabled(isCloning)
+                Text(String(localized: "packImport.localFolderHint"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(AWColor.label3)
                 if isCloning {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             HStack(spacing: 6) {
                                 ProgressView().controlSize(.small)
-                                Text(String(localized: "packImport.cloning")).font(.system(size: 12))
+                                Text(String(localized: "packImport.preparing")).font(.system(size: 12))
                             }
                             Spacer()
                         }
@@ -159,22 +168,22 @@ struct PackImportSheet: View {
                             .progressViewStyle(.linear)
                     }
                     .padding(12)
-                    .background(MMColor.card)
+                    .background(AWColor.card)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(MMColor.hairline, lineWidth: 0.5))
+                        .stroke(AWColor.hairline, lineWidth: 0.5))
                 }
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
             Spacer(minLength: 0)
             SheetFooter {
-                MMButton(String(localized: "packImport.cancel")) { cancel() }
+                AWButton(String(localized: "packImport.cancel")) { cancel() }
                 Spacer(minLength: 0)
                 if isCloning {
-                    MMButton(String(localized: "packImport.cloningButton"), kind: .primary).disabled(true).opacity(0.5)
+                    AWButton(String(localized: "packImport.preparing"), kind: .primary).disabled(true).opacity(0.5)
                 } else {
-                    MMButton(String(localized: "packImport.next"), kind: .primary) { startClone() }
+                    AWButton(String(localized: "packImport.next"), kind: .primary) { startImport() }
                         .disabled(urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         .opacity(urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.4 : 1)
                 }
@@ -190,7 +199,7 @@ struct PackImportSheet: View {
             let sel = actions.first(where: { $0.id == selectedActionID }) ?? actions.first
             VStack(spacing: 0) {
                 SheetHead(step: 2, title: String(format: String(localized: "packImport.reviewTitle"), cloned.manifest.name),
-                          sub: "\(cloned.repo) · \(cloned.commitSHA)")
+                          sub: "\(cloned.repo) · \(cloned.isLocal ? String(localized: "packs.localSource") : cloned.commitSHA)")
                 VStack(spacing: 0) {
                     Banner(String(localized: "packImport.reviewWarning"),
                            tone: .red)
@@ -216,10 +225,10 @@ struct PackImportSheet: View {
                 SheetFooter {
                     Text(String(format: String(localized: "packImport.actionsScriptsCount"), actions.count, cloned.scripts.count))
                         .font(.system(size: 11.5))
-                        .foregroundStyle(MMColor.label3)
+                        .foregroundStyle(AWColor.label3)
                     Spacer(minLength: 0)
-                    MMButton(String(localized: "packImport.back")) { phase = .url }
-                    MMButton(String(localized: "packImport.continue"), kind: .primary) { phase = .confirm }
+                    AWButton(String(localized: "packImport.back")) { phase = .url }
+                    AWButton(String(localized: "packImport.continue"), kind: .primary) { phase = .confirm }
                         .disabled(!canContinue(actions))
                         .opacity(canContinue(actions) ? 1 : 0.4)
                 }
@@ -236,25 +245,25 @@ struct PackImportSheet: View {
                         if viewed.contains(a.id) {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 13))
-                                .foregroundStyle(isSel ? Color.white : MMColor.green)
+                                .foregroundStyle(isSel ? Color.white : AWColor.green)
                         } else {
                             Circle()
-                                .strokeBorder(isSel ? Color.white.opacity(0.6) : MMColor.label4,
+                                .strokeBorder(isSel ? Color.white.opacity(0.6) : AWColor.label4,
                                               lineWidth: 1.3)
                                 .frame(width: 14, height: 14)
                         }
                         Text(a.title)
                             .font(.system(size: 12, weight: isSel ? .semibold : .regular))
-                            .foregroundStyle(isSel ? Color.white : MMColor.label)
+                            .foregroundStyle(isSel ? Color.white : AWColor.label)
                             .lineLimit(1)
                             .truncationMode(.tail)
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
-                    .background(isSel ? MMColor.accent : Color.clear)
+                    .background(isSel ? AWColor.accent : Color.clear)
                     .overlay(alignment: .top) {
-                        if i > 0 { Rectangle().fill(MMColor.separator).frame(height: 0.5) }
+                        if i > 0 { Rectangle().fill(AWColor.separator).frame(height: 0.5) }
                     }
                     .contentShape(Rectangle())
                     .onTapGesture {
@@ -263,14 +272,14 @@ struct PackImportSheet: View {
                     }
                 }
             }
-            .background(MMColor.card)
+            .background(AWColor.card)
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(MMColor.hairline, lineWidth: 0.5))
+                .stroke(AWColor.hairline, lineWidth: 0.5))
 
             Text(String(format: String(localized: "packImport.viewedProgress"), viewed.count, actions.count))
                 .font(.system(size: 11))
-                .foregroundStyle(MMColor.label3)
+                .foregroundStyle(AWColor.label3)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 8)
         }
@@ -285,7 +294,7 @@ struct PackImportSheet: View {
                     Spacer(minLength: 0)
                     Text(sel.script)
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(MMColor.label3)
+                        .foregroundStyle(AWColor.label3)
                         .lineLimit(1)
                         .truncationMode(.head)
                 }
@@ -307,31 +316,33 @@ struct PackImportSheet: View {
                     AppIcon(cloned.manifest.icon, size: 52, hue: .teal)
                     VStack(spacing: 2) {
                         Text(cloned.manifest.name).font(.system(size: 15, weight: .semibold))
-                        Text(String(format: String(localized: "packImport.actionsCommit"), cloned.manifest.actions.count, cloned.commitSHA))
+                        Text(cloned.isLocal
+                             ? String(format: String(localized: "packImport.actionsLocal"), cloned.manifest.actions.count)
+                             : String(format: String(localized: "packImport.actionsCommit"), cloned.manifest.actions.count, cloned.commitSHA))
                             .font(.system(size: 11.5, design: .monospaced))
-                            .foregroundStyle(MMColor.label2)
+                            .foregroundStyle(AWColor.label2)
                     }
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 18))
-                            .foregroundStyle(MMColor.accent)
+                            .foregroundStyle(AWColor.accent)
                         Text(String(localized: "packImport.confirmDisabledNote"))
                             .font(.system(size: 12.5))
-                            .foregroundStyle(MMColor.label)
+                            .foregroundStyle(AWColor.label)
                             .lineSpacing(1.5)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(12)
-                    .background(MMColor.accentTint)
+                    .background(AWColor.accentTint)
                     .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 }
                 .padding(.horizontal, 22)
                 .padding(.vertical, 18)
                 Spacer(minLength: 0)
                 SheetFooter {
-                    MMButton(String(localized: "packImport.back")) { phase = .review }
+                    AWButton(String(localized: "packImport.back")) { phase = .review }
                     Spacer(minLength: 0)
-                    MMButton(String(localized: "packImport.import"), systemImage: "arrow.down.circle", kind: .primary) {
+                    AWButton(String(localized: "packImport.import"), systemImage: "arrow.down.circle", kind: .primary) {
                         doImport(cloned)
                     }
                 }
@@ -352,9 +363,9 @@ struct PackImportSheet: View {
             .padding(.vertical, 16)
             Spacer(minLength: 0)
             SheetFooter {
-                MMButton(String(localized: "packImport.cancel")) { cancel() }
+                AWButton(String(localized: "packImport.cancel")) { cancel() }
                 Spacer(minLength: 0)
-                MMButton(String(localized: "packImport.retry"), kind: .primary) { phase = .url }
+                AWButton(String(localized: "packImport.retry"), kind: .primary) { phase = .url }
             }
         }
     }
@@ -376,13 +387,13 @@ struct PackImportSheet: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(String(format: String(localized: "packImport.undeclaredTitle"), files.count))
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(MMColor.red)
+                .foregroundStyle(AWColor.red)
             ForEach(files, id: \.relativePath) { f in
                 HStack(spacing: 6) {
                     Image(systemName: "doc.text.magnifyingglass")
-                        .font(.system(size: 11)).foregroundStyle(MMColor.label3)
+                        .font(.system(size: 11)).foregroundStyle(AWColor.label3)
                     Text(f.relativePath)
-                        .font(.system(size: 11, design: .monospaced)).foregroundStyle(MMColor.label)
+                        .font(.system(size: 11, design: .monospaced)).foregroundStyle(AWColor.label)
                         .lineLimit(1).truncationMode(.middle)
                     if f.isSymlink { Badge(String(localized: "packImport.flagSymlink"), tone: .orange) }
                     if f.isExecutable { Badge(String(localized: "packImport.flagExecutable"), tone: .red) }
@@ -398,10 +409,10 @@ struct PackImportSheet: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MMColor.card)
+        .background(AWColor.card)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .stroke(MMColor.red.opacity(0.4), lineWidth: 0.8))
+            .stroke(AWColor.red.opacity(0.4), lineWidth: 0.8))
     }
 
     private func matchSummary(_ a: PackAction) -> String {
@@ -414,24 +425,53 @@ struct PackImportSheet: View {
         }
         var parts = [target]
         if !a.utis.isEmpty { parts.append(a.utis.joined(separator: " · ")) }
+        if !a.extensions.isEmpty {
+            parts.append(String(localized: "editor.extensions") + ": " + a.extensions.joined(separator: ", "))
+        }
+        if let pattern = a.filenamePattern {
+            parts.append(String(localized: "panel.filenamePattern") + ": " + pattern)
+        }
         parts.append(a.placement == .submenu ? String(localized: "packImport.placementSubmenu") : String(localized: "packImport.placementTop"))
         return parts.joined(separator: " · ")
     }
 
-    private func startClone() {
+    private func chooseLocalFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = String(localized: "packImport.localFolderHint")
+        if panel.runModal() == .OK, let directory = panel.url {
+            startImport(localDirectory: directory)
+        }
+    }
+
+    private func startImport(localDirectory: URL? = nil) {
         let input = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !input.isEmpty else { return }
+        guard localDirectory != nil || !input.isEmpty else { return }
+        discardImport()
         phase = .cloning
-        Task {
+        importTask = Task {
             do {
-                let result = try await packManager.clone(input)
+                let result: ClonedPack
+                if let localDirectory {
+                    result = try await packManager.prepareLocalDirectory(localDirectory)
+                } else {
+                    result = try await packManager.clone(input)
+                }
+                guard !Task.isCancelled else {
+                    packManager.discard(tempDir: result.tempDir)
+                    return
+                }
                 cloned = result
                 // 不自动标记任何项为已看:进入审查页时 viewed 为空,
                 // 首项仅作展示,用户必须主动点击每一项(含首项)才计入「已查看」。
                 viewed = []
+                extrasAck = false
                 selectedActionID = result.manifest.actions.first?.id
                 phase = .review
             } catch {
+                guard !Task.isCancelled else { return }
                 phase = .error(error.localizedDescription)
             }
         }
@@ -448,9 +488,15 @@ struct PackImportSheet: View {
         }
     }
 
-    private func cancel() {
+    private func discardImport() {
+        importTask?.cancel()
+        importTask = nil
         if let cloned { packManager.discard(tempDir: cloned.tempDir) }
         cloned = nil
+    }
+
+    private func cancel() {
+        discardImport()
         onClose()
     }
 }
@@ -480,7 +526,7 @@ struct PackUpdateSheet: View {
             }
         }
         .frame(width: phase == .ready ? 720 : 470, height: 500)
-        .background(MMColor.content)
+        .background(AWColor.content)
         .onAppear(perform: load)
     }
 
@@ -493,7 +539,7 @@ struct PackUpdateSheet: View {
                 ProgressView().controlSize(.small)
                 Text(String(localized: "packImport.updateCloning"))
                     .font(.system(size: 12))
-                    .foregroundStyle(MMColor.label2)
+                    .foregroundStyle(AWColor.label2)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             footer(primaryTitle: nil)
@@ -534,7 +580,7 @@ struct PackUpdateSheet: View {
         HStack(spacing: 9) {
             Image(systemName: "plus")
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(MMColor.green)
+                .foregroundStyle(AWColor.green)
             Text(String(localized: "packImport.newActionPrefix"))
                 .font(.system(size: 12))
             + Text(pa.script)
@@ -544,7 +590,7 @@ struct PackUpdateSheet: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(MMColor.green.opacity(MMColor.isDark ? 0.16 : 0.10))
+        .background(AWColor.green.opacity(AWColor.isDark ? 0.16 : 0.10))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
@@ -571,14 +617,14 @@ struct PackUpdateSheet: View {
                     .font(.system(size: 14.5, weight: .semibold))
                 Text(String(localized: "packImport.updateHeadSub"))
                     .font(.system(size: 11.5))
-                    .foregroundStyle(MMColor.label2)
+                    .foregroundStyle(AWColor.label2)
             }
             Spacer(minLength: 0)
             HStack(spacing: 6) {
                 Badge(pack.commitSHA, tone: .gray)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(MMColor.label3)
+                    .foregroundStyle(AWColor.label3)
                 Badge(update?.newSHA ?? "…", tone: .accent)
             }
         }
@@ -586,16 +632,16 @@ struct PackUpdateSheet: View {
         .padding(.top, 16)
         .padding(.bottom, 12)
         .overlay(alignment: .bottom) {
-            Rectangle().fill(MMColor.separator).frame(height: 0.5)
+            Rectangle().fill(AWColor.separator).frame(height: 0.5)
         }
     }
 
     private func footer(primaryTitle: String?) -> some View {
         SheetFooter {
-            MMButton(String(localized: "packImport.cancel")) { cancel() }
+            AWButton(String(localized: "packImport.cancel")) { cancel() }
             Spacer(minLength: 0)
             if let primaryTitle {
-                MMButton(primaryTitle, systemImage: "arrow.down.circle", kind: .primary) {
+                AWButton(primaryTitle, systemImage: "arrow.down.circle", kind: .primary) {
                     apply()
                 }
             }
@@ -678,18 +724,18 @@ struct DiffFileCard: View {
                 HStack(spacing: 8) {
                     Image(systemName: expanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(MMColor.label3)
+                        .foregroundStyle(AWColor.label3)
                     Text(diff.path)
                         .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(MMColor.label)
+                        .foregroundStyle(AWColor.label)
                     if diff.isAdded { Badge(String(localized: "packImport.diffAdded"), tone: .green) }
                     if diff.isRemoved { Badge(String(localized: "packImport.diffRemoved"), tone: .red) }
                     Spacer(minLength: 0)
                     HStack(spacing: 6) {
                         Text("+\(added)")
-                            .foregroundStyle(MMColor.green)
+                            .foregroundStyle(AWColor.green)
                         Text("−\(removed)")
-                            .foregroundStyle(MMColor.red)
+                            .foregroundStyle(AWColor.red)
                     }
                     .font(.system(size: 11, design: .monospaced))
                 }
@@ -700,7 +746,7 @@ struct DiffFileCard: View {
             .buttonStyle(.plain)
 
             if expanded {
-                Rectangle().fill(MMColor.separator).frame(height: 0.5)
+                Rectangle().fill(AWColor.separator).frame(height: 0.5)
                 VStack(spacing: 0) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                         DiffRow(line: line)
@@ -709,10 +755,10 @@ struct DiffFileCard: View {
                 .padding(.vertical, 6)
             }
         }
-        .background(MMColor.card)
+        .background(AWColor.card)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .stroke(MMColor.hairline, lineWidth: 0.5))
+            .stroke(AWColor.hairline, lineWidth: 0.5))
     }
 }
 
@@ -763,15 +809,15 @@ struct DiffRow: View {
 
     private var bg: Color {
         switch line.kind {
-        case .add: return MMColor.green.opacity(MMColor.isDark ? 0.18 : 0.12)
-        case .del: return MMColor.red.opacity(MMColor.isDark ? 0.18 : 0.10)
+        case .add: return AWColor.green.opacity(AWColor.isDark ? 0.18 : 0.12)
+        case .del: return AWColor.red.opacity(AWColor.isDark ? 0.18 : 0.10)
         case .ctx: return .clear
         }
     }
     private var bar: Color {
         switch line.kind {
-        case .add: return MMColor.green
-        case .del: return MMColor.red
+        case .add: return AWColor.green
+        case .del: return AWColor.red
         case .ctx: return .clear
         }
     }
@@ -784,9 +830,9 @@ struct DiffRow: View {
     }
     private var signColor: Color {
         switch line.kind {
-        case .add: return MMColor.green
-        case .del: return MMColor.red
-        case .ctx: return MMColor.label3
+        case .add: return AWColor.green
+        case .del: return AWColor.red
+        case .ctx: return AWColor.label3
         }
     }
 
@@ -799,7 +845,7 @@ struct DiffRow: View {
                 .frame(width: 18)
             Text(line.text.isEmpty ? " " : line.text)
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(MMColor.label)
+                .foregroundStyle(AWColor.label)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -824,23 +870,23 @@ struct ScriptViewerSheet: View {
                 Spacer(minLength: 0)
                 Text(path)
                     .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(MMColor.label3)
+                    .foregroundStyle(AWColor.label3)
                     .lineLimit(1)
                     .truncationMode(.head)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .overlay(alignment: .bottom) {
-                Rectangle().fill(MMColor.separator).frame(height: 0.5)
+                Rectangle().fill(AWColor.separator).frame(height: 0.5)
             }
             CodeBlock(code, lang: String(localized: "packImport.zshReadonlyLang"))
                 .padding(16)
             SheetFooter {
                 Spacer(minLength: 0)
-                MMButton(String(localized: "packImport.close"), kind: .primary) { onClose() }
+                AWButton(String(localized: "packImport.close"), kind: .primary) { onClose() }
             }
         }
         .frame(width: 560, height: 460)
-        .background(MMColor.content)
+        .background(AWColor.content)
     }
 }

@@ -1,7 +1,7 @@
 #!/bin/zsh
 # 把已剪切的项目移动到当前目录（$1）
 set -e
-buffer="$MENUMATE_DATA/cutbuffer"
+buffer="$ANYWHERE_DATA/cutbuffer"
 if [[ ! -s "$buffer" ]]; then
   echo "没有已剪切的项目" >&2
   exit 1

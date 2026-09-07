@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 import FinderSync
 import ServiceManagement
-import MenuMateCore
+import AnyWhereCore
 
 // 首启引导窗 — 对照 docs/design/hifi/screen-misc.jsx OnboardWin / Onboard1 / Onboard2 / Onboard3。
 // 520×480:顶部 3 个步进点(当前步 accent 长条)+ 居中标题 19/700 + 副文 12.5 灰。
@@ -22,7 +22,7 @@ struct OnboardingView: View {
             HStack(spacing: 7) {
                 ForEach(0..<stepCount, id: \.self) { i in
                     Capsule(style: .continuous)
-                        .fill(i == step ? MMColor.accent : MMColor.label4)
+                        .fill(i == step ? AWColor.accent : AWColor.label4)
                         .frame(width: i == step ? 18 : 7, height: 7)
                         .animation(.easeInOut(duration: 0.2), value: step)
                 }
@@ -38,7 +38,7 @@ struct OnboardingView: View {
                 if let subtitle {
                     Text(subtitle)
                         .font(.system(size: 12.5))
-                        .foregroundStyle(MMColor.label2)
+                        .foregroundStyle(AWColor.label2)
                         .lineSpacing(2.5) // ≈ line-height 1.55
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 360)
@@ -55,9 +55,9 @@ struct OnboardingView: View {
             // 底栏:上一步/跳过 + 主按钮。
             HStack {
                 if step > 0 {
-                    MMButton(String(localized: "onboarding.previous"), kind: .plain, size: .sm) { step -= 1 }
+                    AWButton(String(localized: "onboarding.previous"), kind: .plain, size: .sm) { step -= 1 }
                 } else {
-                    MMButton(String(localized: "onboarding.skip"), kind: .plain, size: .sm) { finish() }
+                    AWButton(String(localized: "onboarding.skip"), kind: .plain, size: .sm) { finish() }
                 }
                 Spacer()
                 primaryButton
@@ -112,32 +112,32 @@ struct OnboardingView: View {
     private var step1Extension: some View {
         Placeholder(label: String(localized: "onboarding.step1.screenshotLabel"), height: 132)
         VStack(spacing: 10) {
-            MMButton(String(localized: "onboarding.step1.openSettings"), systemImage: "arrow.up.right.square", kind: .primary) {
+            AWButton(String(localized: "onboarding.step1.openSettings"), systemImage: "arrow.up.right.square", kind: .primary) {
                 FIFinderSyncController.showExtensionManagementInterface()
             }
             if extensionEnabled {
                 HStack(spacing: 7) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 16))
-                        .foregroundStyle(MMColor.green)
+                        .foregroundStyle(AWColor.green)
                     Text(String(localized: "onboarding.step1.detected"))
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(MMColor.green)
+                        .foregroundStyle(AWColor.green)
                     Text(String(localized: "onboarding.step1.autoCheck"))
                         .font(.system(size: 12))
-                        .foregroundStyle(MMColor.label3)
+                        .foregroundStyle(AWColor.label3)
                 }
             } else {
                 HStack(spacing: 7) {
                     Image(systemName: "circle.dashed")
                         .font(.system(size: 16))
-                        .foregroundStyle(MMColor.label3)
+                        .foregroundStyle(AWColor.label3)
                     Text(String(localized: "onboarding.step1.notDetected"))
                         .font(.system(size: 12))
-                        .foregroundStyle(MMColor.label3)
+                        .foregroundStyle(AWColor.label3)
                     Text(String(localized: "onboarding.step1.autoCheck"))
                         .font(.system(size: 12))
-                        .foregroundStyle(MMColor.label3)
+                        .foregroundStyle(AWColor.label3)
                 }
             }
         }
@@ -151,7 +151,7 @@ struct OnboardingView: View {
             AppIcon("power", size: 34, hue: .blue)
             Text(String(localized: "onboarding.step2.launchAtLogin"))
                 .font(.system(size: 14, weight: .medium))
-            MMSwitch($loginItemEnabled)
+            AWSwitch($loginItemEnabled)
                 .onChange(of: loginItemEnabled) { enabled in
                     if enabled { try? SMAppService.mainApp.register() }
                     else { try? SMAppService.mainApp.unregister() }
@@ -159,15 +159,15 @@ struct OnboardingView: View {
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 16)
-        .background(MMColor.card)
+        .background(AWColor.card)
         .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .stroke(MMColor.hairline, lineWidth: 0.5)
+                .stroke(AWColor.hairline, lineWidth: 0.5)
         )
         Text(String(localized: "onboarding.step2.changeLater"))
             .font(.system(size: 11))
-            .foregroundStyle(MMColor.label3)
+            .foregroundStyle(AWColor.label3)
             .padding(.top, 4)
     }
 
@@ -184,17 +184,17 @@ struct OnboardingView: View {
                           granted: accessibilityTrusted)
         }
         VStack(spacing: 8) {
-            MMButton(String(localized: "onboarding.step3.grantAll"), systemImage: "checkmark.shield", kind: .primary) {
+            AWButton(String(localized: "onboarding.step3.grantAll"), systemImage: "checkmark.shield", kind: .primary) {
                 Permissions.primeAll()
             }
             if !accessibilityTrusted {
-                MMButton(String(localized: "onboarding.step3.openAccessibility"), kind: .plain, size: .sm) {
+                AWButton(String(localized: "onboarding.step3.openAccessibility"), kind: .plain, size: .sm) {
                     Permissions.openAccessibilitySettings()
                 }
             }
             Text(String(localized: "onboarding.step3.grantHint"))
                 .font(.system(size: 11))
-                .foregroundStyle(MMColor.label3)
+                .foregroundStyle(AWColor.label3)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
         }
@@ -209,22 +209,22 @@ struct OnboardingView: View {
             AppIcon(icon, size: 30, hue: hue)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.system(size: 13, weight: .medium))
-                Text(desc).font(.system(size: 11.5)).foregroundStyle(MMColor.label2)
+                Text(desc).font(.system(size: 11.5)).foregroundStyle(AWColor.label2)
             }
             Spacer(minLength: 0)
             if let granted {
                 Image(systemName: granted ? "checkmark.circle.fill" : "circle.dashed")
                     .font(.system(size: 16))
-                    .foregroundStyle(granted ? MMColor.green : MMColor.label3)
+                    .foregroundStyle(granted ? AWColor.green : AWColor.label3)
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .frame(maxWidth: 380)
-        .background(MMColor.card)
+        .background(AWColor.card)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .stroke(MMColor.hairline, lineWidth: 0.5))
+            .stroke(AWColor.hairline, lineWidth: 0.5))
     }
 
     // ④ 环境自检。
@@ -238,15 +238,15 @@ struct OnboardingView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MMColor.codeBg)
-        .clipShape(RoundedRectangle(cornerRadius: MMRadius.card, style: .continuous))
+        .background(AWColor.codeBg)
+        .clipShape(RoundedRectangle(cornerRadius: AWRadius.card, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: MMRadius.card, style: .continuous)
-                .stroke(MMColor.border, lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: AWRadius.card, style: .continuous)
+                .stroke(AWColor.border, lineWidth: 0.5)
         )
         HStack {
             Spacer()
-            MMButton(String(localized: "onboarding.step4.copyDiagnosis"), systemImage: "doc.on.doc", kind: .plain, size: .sm) {
+            AWButton(String(localized: "onboarding.step4.copyDiagnosis"), systemImage: "doc.on.doc", kind: .plain, size: .sm) {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(diagnosis, forType: .string)
             }
@@ -274,15 +274,15 @@ struct OnboardingView: View {
             } else if warning {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 13))
-                    .foregroundStyle(MMColor.orange)
+                    .foregroundStyle(AWColor.orange)
             } else {
                 Image(systemName: "checkmark")
                     .font(.system(size: 13))
-                    .foregroundStyle(MMColor.green)
+                    .foregroundStyle(AWColor.green)
             }
             Text(line)
                 .font(.system(size: 11.5, design: .monospaced))
-                .foregroundStyle(indented ? MMColor.label3 : MMColor.label)
+                .foregroundStyle(indented ? AWColor.label3 : AWColor.label)
                 .lineSpacing(4) // ≈ line-height 1.85
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
@@ -296,13 +296,13 @@ struct OnboardingView: View {
     private var primaryButton: some View {
         switch step {
         case 0:
-            MMButton(String(localized: "onboarding.next"), kind: .primary) { step = 1 }
+            AWButton(String(localized: "onboarding.next"), kind: .primary) { step = 1 }
         case 1:
-            MMButton(String(localized: "onboarding.next"), kind: .primary) { step = 2 }
+            AWButton(String(localized: "onboarding.next"), kind: .primary) { step = 2 }
         case 2:
-            MMButton(String(localized: "onboarding.next"), kind: .primary) { step = 3 }
+            AWButton(String(localized: "onboarding.next"), kind: .primary) { step = 3 }
         default:
-            MMButton(String(localized: "onboarding.done"), systemImage: "checkmark", kind: .primary) { finish() }
+            AWButton(String(localized: "onboarding.done"), systemImage: "checkmark", kind: .primary) { finish() }
         }
     }
 
@@ -341,18 +341,18 @@ private struct Placeholder: View {
     var height: CGFloat = 132
 
     var body: some View {
-        RoundedRectangle(cornerRadius: MMRadius.card, style: .continuous)
-            .fill(MMColor.label.opacity(0.05))
+        RoundedRectangle(cornerRadius: AWRadius.card, style: .continuous)
+            .fill(AWColor.label.opacity(0.05))
             .frame(height: height)
             .overlay(
-                RoundedRectangle(cornerRadius: MMRadius.card, style: .continuous)
+                RoundedRectangle(cornerRadius: AWRadius.card, style: .continuous)
                     .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
-                    .foregroundStyle(MMColor.label4)
+                    .foregroundStyle(AWColor.label4)
             )
             .overlay(
                 Text(label)
                     .font(.system(size: 12))
-                    .foregroundStyle(MMColor.label3)
+                    .foregroundStyle(AWColor.label3)
             )
     }
 }

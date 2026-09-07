@@ -1,5 +1,5 @@
 import Foundation
-import MenuMateCore
+import AnyWhereCore
 
 final class ActionListener {
     private let reassembler = ChunkReassembler()   // queue: .main 串行投递 → 单线程使用

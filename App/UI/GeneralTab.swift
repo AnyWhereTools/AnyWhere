@@ -2,7 +2,7 @@ import SwiftUI
 import ServiceManagement
 import AppKit
 import UniformTypeIdentifiers
-import MenuMateCore
+import AnyWhereCore
 
 // 通用 Tab — 对照 docs/design/hifi/screen-system.jsx ScreenGeneral + DestructiveDialog。
 // 分组列表(登录时启动 / 脚本·模板文件夹 / 恢复出厂预设·重新运行引导)+ 底部版本灰字。
@@ -23,18 +23,18 @@ struct GeneralTab: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     // 登录时启动(无 header)。
-                    MMGroup {
-                        MMRow {
+                    AWGroup {
+                        AWRow {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(String(localized: "general.launchAtLogin"))
                                     .font(.system(size: 13))
-                                    .foregroundStyle(MMColor.label)
+                                    .foregroundStyle(AWColor.label)
                                 Text(String(localized: "general.launchAtLoginDesc"))
                                     .font(.system(size: 11))
-                                    .foregroundStyle(MMColor.label3)
+                                    .foregroundStyle(AWColor.label3)
                             }
                             Spacer(minLength: 0)
-                            MMSwitch($loginItemEnabled, scale: 0.78)
+                            AWSwitch($loginItemEnabled, scale: 0.78)
                                 .onChange(of: loginItemEnabled) { enabled in
                                     if enabled { try? SMAppService.mainApp.register() }
                                     else { try? SMAppService.mainApp.unregister() }
@@ -43,43 +43,43 @@ struct GeneralTab: View {
                     }
 
                     // 脚本。
-                    MMGroup(header: String(localized: "general.scripts")) {
-                        MMRow {
+                    AWGroup(header: String(localized: "general.scripts")) {
+                        AWRow {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(String(localized: "general.scriptsFolder"))
                                     .font(.system(size: 13))
-                                    .foregroundStyle(MMColor.label)
+                                    .foregroundStyle(AWColor.label)
                                 Text(AppPaths.scriptsDirectory().path)
                                     .font(.system(size: 11, design: .monospaced))
-                                    .foregroundStyle(MMColor.label3)
+                                    .foregroundStyle(AWColor.label3)
                                     .lineLimit(1)
                                     .truncationMode(.middle)
                                     .textSelection(.enabled)          // 可选中复制完整路径
                                     .help(AppPaths.scriptsDirectory().path)  // 悬停看完整路径
                             }
                             Spacer(minLength: 0)
-                            MMButton(String(localized: "general.openInFinder"), systemImage: "folder", size: .sm) {
+                            AWButton(String(localized: "general.openInFinder"), systemImage: "folder", size: .sm) {
                                 NSWorkspace.shared.open(AppPaths.scriptsDirectory())
                             }
                         }
-                        MMRow {
+                        AWRow {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(String(localized: "general.templatesFolder"))
                                     .font(.system(size: 13))
-                                    .foregroundStyle(MMColor.label)
+                                    .foregroundStyle(AWColor.label)
                                 Text(String(localized: "general.templatesFolderDesc"))
                                     .font(.system(size: 11))
-                                    .foregroundStyle(MMColor.label3)
+                                    .foregroundStyle(AWColor.label3)
                             }
                             Spacer(minLength: 0)
-                            MMButton(String(localized: "general.openInFinder"), systemImage: "folder", size: .sm) {
+                            AWButton(String(localized: "general.openInFinder"), systemImage: "folder", size: .sm) {
                                 NSWorkspace.shared.open(AppPaths.templatesDirectory())
                             }
                         }
                     }
 
                     // 外部工具(默认终端 / 编辑器)——喂给「在终端打开 / 用编辑器打开」预设。
-                    MMGroup(header: String(localized: "general.externalTools"), footer: String(localized: "general.externalToolsFooter")) {
+                    AWGroup(header: String(localized: "general.externalTools"), footer: String(localized: "general.externalToolsFooter")) {
                         toolRow(title: String(localized: "general.defaultTerminal"),
                                 current: terminalID,
                                 candidates: AppDetect.installed(AppDetect.terminalCandidates),
@@ -95,29 +95,29 @@ struct GeneralTab: View {
                     }
 
                     // 维护。
-                    MMGroup(header: String(localized: "general.maintenance")) {
-                        MMRow {
+                    AWGroup(header: String(localized: "general.maintenance")) {
+                        AWRow {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(String(localized: "general.restorePresets"))
                                     .font(.system(size: 13))
-                                    .foregroundStyle(MMColor.label)
+                                    .foregroundStyle(AWColor.label)
                                 Text(String(localized: "general.restorePresetsDesc"))
                                     .font(.system(size: 11))
-                                    .foregroundStyle(MMColor.label3)
+                                    .foregroundStyle(AWColor.label3)
                             }
                             Spacer(minLength: 0)
-                            MMButton(String(localized: "general.restore"), kind: .danger, size: .sm) {
+                            AWButton(String(localized: "general.restore"), kind: .danger, size: .sm) {
                                 confirmRestore = true
                             }
                         }
-                        MMRow {
+                        AWRow {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(String(localized: "general.rerunOnboarding"))
                                     .font(.system(size: 13))
-                                    .foregroundStyle(MMColor.label)
+                                    .foregroundStyle(AWColor.label)
                             }
                             Spacer(minLength: 0)
-                            MMButton(String(localized: "general.rerun"), size: .sm) {
+                            AWButton(String(localized: "general.rerun"), size: .sm) {
                                 UserDefaults.standard.set(false, forKey: "onboardingDone")
                                 OnboardingWindowController.show()
                             }
@@ -127,14 +127,14 @@ struct GeneralTab: View {
                     // 底部版本灰字居中。
                     Text(versionString)
                         .font(.system(size: 11))
-                        .foregroundStyle(MMColor.label3)
+                        .foregroundStyle(AWColor.label3)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, 4)
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical, 16)
             }
-            .background(MMColor.content)
+            .background(AWColor.content)
 
             // 破坏性确认对话框(自绘 overlay)。
             if confirmRestore {
@@ -152,10 +152,10 @@ struct GeneralTab: View {
                          fallbackName: String, onPick: @escaping (String?) -> Void) -> some View {
         let currentName = current.map { AppDetect.displayName(for: $0) }
             ?? String(format: String(localized: "general.followDefault"), fallbackName)
-        MMRow {
+        AWRow {
             Text(title)
                 .font(.system(size: 13))
-                .foregroundStyle(MMColor.label)
+                .foregroundStyle(AWColor.label)
             Spacer(minLength: 0)
             Menu {
                 Button(String(format: String(localized: "general.followDefault"), fallbackName)) { onPick(nil) }
@@ -171,7 +171,7 @@ struct GeneralTab: View {
                 Divider()
                 Button(String(localized: "general.custom")) { pickCustomApp(onPick) }
             } label: {
-                MMPopup(currentName, width: 200)
+                AWPopup(currentName, width: 200)
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
@@ -214,20 +214,20 @@ private struct DestructiveRestoreDialog: View {
             VStack(spacing: 9) {
                 ZStack {
                     Circle()
-                        .fill(MMColor.red.opacity(MMColor.isDark ? 0.22 : 0.14))
+                        .fill(AWColor.red.opacity(AWColor.isDark ? 0.22 : 0.14))
                         .frame(width: 52, height: 52)
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 26))
-                        .foregroundStyle(MMColor.red)
+                        .foregroundStyle(AWColor.red)
                 }
 
                 Text(String(localized: "general.restoreConfirmTitle"))
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(MMColor.label)
+                    .foregroundStyle(AWColor.label)
 
                 Text(impactText)
                     .font(.system(size: 11.5))
-                    .foregroundStyle(MMColor.label2)
+                    .foregroundStyle(AWColor.label2)
                     .lineSpacing(2)
                     .multilineTextAlignment(.center)
 
@@ -238,11 +238,11 @@ private struct DestructiveRestoreDialog: View {
                     } label: {
                         Text(String(localized: "general.restorePresets"))
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(MMColor.onAccent)
+                            .foregroundStyle(AWColor.onAccent)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 6)
-                            .background(MMColor.red)
-                            .clipShape(RoundedRectangle(cornerRadius: MMRadius.control, style: .continuous))
+                            .background(AWColor.red)
+                            .clipShape(RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous))
                     }
                     .buttonStyle(.plain)
 
@@ -251,14 +251,14 @@ private struct DestructiveRestoreDialog: View {
                     } label: {
                         Text(String(localized: "general.cancel"))
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(MMColor.label)
+                            .foregroundStyle(AWColor.label)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 6)
-                            .background(MMColor.control)
-                            .clipShape(RoundedRectangle(cornerRadius: MMRadius.control, style: .continuous))
+                            .background(AWColor.control)
+                            .clipShape(RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous))
                             .overlay(
-                                RoundedRectangle(cornerRadius: MMRadius.control, style: .continuous)
-                                    .stroke(MMColor.border, lineWidth: 0.5)
+                                RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous)
+                                    .stroke(AWColor.border, lineWidth: 0.5)
                             )
                     }
                     .buttonStyle(.plain)
@@ -269,7 +269,7 @@ private struct DestructiveRestoreDialog: View {
             .padding(.top, 20)
             .padding(.bottom, 16)
             .frame(width: 280)
-            .background(MMColor.content)
+            .background(AWColor.content)
             .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             .shadow(color: Color.black.opacity(0.28), radius: 20, x: 0, y: 8)
         }

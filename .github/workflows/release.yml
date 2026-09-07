@@ -59,7 +59,7 @@ jobs:
         run: |
           BIN=build/SourcePackages/artifacts/sparkle/Sparkle/bin
           mkdir -p build/release/feed
-          cp build/release/MenuMate-*.dmg build/release/feed/
+          cp build/release/AnyWhere-*.dmg build/release/feed/
           printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle_key"
           "$BIN/generate_appcast" build/release/feed \
             --ed-key-file "$RUNNER_TEMP/sparkle_key" \
@@ -70,7 +70,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" build/release/MenuMate-*.dmg \
+          gh release create "$GITHUB_REF_NAME" build/release/AnyWhere-*.dmg \
             --title "$GITHUB_REF_NAME" --generate-notes
 
       - name: Commit updated appcast

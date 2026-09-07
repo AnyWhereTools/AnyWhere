@@ -1,10 +1,10 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "ext.launchMenuMate" : {
+    "ext.launchAnyWhere" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Launch MenuMate" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "启动 MenuMate" } }
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Launch AnyWhere" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "启动 AnyWhere" } }
       }
     },
     "ext.loadingMenu" : {

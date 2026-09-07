@@ -1,6 +1,6 @@
 import SwiftUI
 
-// 设置窗:4 Tab,顺序与图标对照 ui.jsx MM_TABS。
+// 设置窗:4 Tab,顺序与图标对照 ui.jsx AW_TABS。
 // 早期「我的菜单」+「系统菜单」已合并为单一「右键菜单」集中入口 Hub(ScreenMenuHub)。
 struct SettingsWindow: View {
     // tab 选择共享给 AppState,便于从 Hub 直接跳到「扩展包」(Tab.packs)。

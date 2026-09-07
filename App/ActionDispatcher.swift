@@ -1,5 +1,5 @@
 import Foundation
-import MenuMateCore
+import AnyWhereCore
 
 protocol ActionRunning {
     @MainActor func run(action: MenuAction, variant: String?, urls: [URL])

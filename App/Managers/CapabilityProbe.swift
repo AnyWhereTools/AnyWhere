@@ -1,5 +1,5 @@
 import Foundation
-import MenuMateCore
+import AnyWhereCore
 
 struct Capabilities: Codable {
     var osVersion: String

@@ -23,7 +23,7 @@ APPLESCRIPT
 else
   # 非 Finder(上传/打开对话框等):发 ⌘↑ 让该面板上一层。
   if ! osascript -e 'tell application "System Events" to key code 126 using command down' >/dev/null 2>&1; then
-    print -u2 "需在『系统设置 › 隐私与安全性 › 辅助功能』勾选 MenuMate,才能在上传/打开对话框里上一层。"
+    print -u2 "需在『系统设置 › 隐私与安全性 › 辅助功能』勾选 AnyWhere,才能在上传/打开对话框里上一层。"
     exit 1
   fi
 fi

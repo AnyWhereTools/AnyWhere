@@ -1,5 +1,5 @@
 import Foundation
-import MenuMateCore
+import AnyWhereCore
 
 struct ManagedService: Identifiable {
     var id: String { item.id }
@@ -19,7 +19,7 @@ final class ServicesManager: ObservableObject {
 
     /// 串行队列：pbs 读写 + ShellRunner（pbs -flush / killall）都是阻塞调用，
     /// 移出主线程避免每次开关冻结 UI；串行保证「写入 → 回读」顺序。
-    private static let queue = DispatchQueue(label: "com.menumate.services", qos: .userInitiated)
+    private static let queue = DispatchQueue(label: "com.anywhere.services", qos: .userInitiated)
 
     private static var cacheURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -87,7 +87,7 @@ final class ServicesManager: ObservableObject {
             do {
                 // 先拷到临时文件再原子替换，避免「删了原文件、拷贝又失败」留下无 pbs.plist 的窗口
                 let tmp = Self.pbsPlistURL.deletingLastPathComponent()
-                    .appendingPathComponent("pbs.plist.menumate-restore.tmp")
+                    .appendingPathComponent("pbs.plist.anywhere-restore.tmp")
                 try? fm.removeItem(at: tmp)
                 try fm.copyItem(at: Self.backupURL, to: tmp)
                 if fm.fileExists(atPath: Self.pbsPlistURL.path) {

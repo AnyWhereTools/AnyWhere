@@ -12,7 +12,7 @@ struct ExecutionLogView: View {
                 Spacer()
                 Text(String(localized: "execLog.empty"))
                     .font(.system(size: 12.5))
-                    .foregroundStyle(MMColor.label3)
+                    .foregroundStyle(AWColor.label3)
                 Spacer()
             } else {
                 ScrollView {
@@ -28,9 +28,9 @@ struct ExecutionLogView: View {
             HStack {
                 Text(String(localized: "execLog.retentionNote"))
                     .font(.system(size: 11))
-                    .foregroundStyle(MMColor.label3)
+                    .foregroundStyle(AWColor.label3)
                 Spacer()
-                MMButton(String(localized: "execLog.clear"), kind: .plain, size: .sm) {
+                AWButton(String(localized: "execLog.clear"), kind: .plain, size: .sm) {
                     log.clear()
                 }
                 .disabled(log.records.isEmpty)
@@ -38,11 +38,11 @@ struct ExecutionLogView: View {
             .padding(.vertical, 8)
             .padding(.horizontal, 14)
             .overlay(alignment: .top) {
-                Rectangle().fill(MMColor.separator).frame(height: 0.5)
+                Rectangle().fill(AWColor.separator).frame(height: 0.5)
             }
         }
         .frame(minWidth: 420, minHeight: 340)
-        .background(MMColor.content)
+        .background(AWColor.content)
     }
 }
 
@@ -61,27 +61,27 @@ private struct RunRow: View {
             HStack(spacing: 9) {
                 Image(systemName: record.success ? "checkmark.circle.fill" : "xmark.circle.fill")
                     .font(.system(size: 15))
-                    .foregroundStyle(record.success ? MMColor.green : MMColor.red)
+                    .foregroundStyle(record.success ? AWColor.green : AWColor.red)
                 Text(record.title)
                     .font(.system(size: 12.5))
-                    .foregroundStyle(MMColor.label)
+                    .foregroundStyle(AWColor.label)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Text(Self.timeFormatter.string(from: record.date))
                     .font(.system(size: 10.5, design: .monospaced))
-                    .foregroundStyle(MMColor.label3)
+                    .foregroundStyle(AWColor.label3)
             }
             // 失败且有 detail → 内联红底等宽 stderr。
             if !record.success, let detail = record.detail, !detail.isEmpty {
                 Text(detail)
                     .font(.system(size: 10.5, design: .monospaced))
-                    .foregroundStyle(MMColor.red)
+                    .foregroundStyle(AWColor.red)
                     .lineSpacing(2.5) // ≈ line-height 1.5
                     .textSelection(.enabled)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(MMColor.red.opacity(MMColor.isDark ? 0.20 : 0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: MMRadius.badge, style: .continuous))
+                    .background(AWColor.red.opacity(AWColor.isDark ? 0.20 : 0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: AWRadius.badge, style: .continuous))
                     .padding(.leading, 24)
                     .padding(.top, 5)
             }
@@ -89,7 +89,7 @@ private struct RunRow: View {
         .padding(.vertical, 8)
         .padding(.horizontal, 14)
         .overlay(alignment: .top) {
-            Rectangle().fill(MMColor.separator.opacity(0.6)).frame(height: 0.5)
+            Rectangle().fill(AWColor.separator.opacity(0.6)).frame(height: 0.5)
         }
     }
 }

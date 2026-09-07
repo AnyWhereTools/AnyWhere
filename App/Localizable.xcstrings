@@ -1,6 +1,374 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "editor.extensions": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File Suffixes"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件后缀"
+          }
+        }
+      }
+    },
+    "editor.extensionsHint": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Separate suffixes with commas; leading dots are optional. Case-insensitive; blank allows all. Files only; no wildcards or regex."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "多个后缀用逗号分隔，可带点，不区分大小写；留空不限。仅匹配文件，不支持通配符或正则。"
+          }
+        }
+      }
+    },
+    "editor.extensionsInvalid": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter literal suffixes such as xlog, log, tar.gz; no wildcards, paths or regex."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请输入普通后缀，例如 xlog、log、tar.gz；不支持通配符、路径或正则。"
+          }
+        }
+      }
+    },
+    "editor.legacyTypeHint": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Legacy type filters are preserved. Editing suffixes or using the button replaces them; blank means unrestricted."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已保留旧类型规则。修改后缀或点击下方按钮后，将替换这些规则；后缀留空表示不限。"
+          }
+        }
+      }
+    },
+    "editor.useExtensions": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use Suffix Matching"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改用后缀匹配"
+          }
+        }
+      }
+    },
+    "panel.filenamePattern": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filename Regex"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件名正则"
+          }
+        }
+      }
+    },
+    "panel.matchingHint": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Match any UTI or suffix, then the whole filename regex (case-insensitive by default). Every selected item must match. Category previews do not evaluate regex."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UTI 与后缀命中任一项即可；文件名正则须额外匹配完整文件名，默认忽略大小写。多选时全部符合才显示。左侧分类预览不验证正则。"
+          }
+        }
+      }
+    },
+    "packConfig.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plugin Configuration"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "插件配置"
+          }
+        }
+      }
+    },
+    "packConfig.save": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save Configuration"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存配置"
+          }
+        }
+      }
+    },
+    "packConfig.clear": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear Configuration"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清除配置"
+          }
+        }
+      }
+    },
+    "packConfig.retry": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry Loading"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新读取"
+          }
+        }
+      }
+    },
+    "packConfig.unselected": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not selected"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未选择"
+          }
+        }
+      }
+    },
+    "packConfig.saved": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configuration saved."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置已保存。"
+          }
+        }
+      }
+    },
+    "packConfig.cleared": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configuration cleared; defaults restored."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置已清除，已恢复默认值。"
+          }
+        }
+      }
+    },
+    "packConfig.keychainError": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cannot access the Keychain (%d). Unlock it and allow access, then retry."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法访问钥匙串（%d），请解锁并允许访问后重试。"
+          }
+        }
+      }
+    },
+    "packConfig.executionError": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check this action's plugin configuration: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请检查此动作的插件配置：%@"
+          }
+        }
+      }
+    },
+    "packs.openLocalFolder": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Source Folder"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开来源文件夹"
+          }
+        }
+      }
+    },
+    "packImport.chooseLocalFolder": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose Local Folder…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择本地文件夹…"
+          }
+        }
+      }
+    },
+    "packImport.localFolderHint": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a folder containing manifest.json. No Git repository is required."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择根目录包含 manifest.json 的文件夹，无需 Git 仓库。"
+          }
+        }
+      }
+    },
+    "packImport.preparing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing pack…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在准备扩展包…"
+          }
+        }
+      }
+    },
+    "packImport.actionsLocal": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld actions · Local folder"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个动作 · 本地文件夹"
+          }
+        }
+      }
+    },
+    "packs.localSource": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local folder"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本地文件夹"
+          }
+        }
+      }
+    },
+    "packs.errorAlreadyInstalled": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This pack is already installed. Uninstall it before importing it again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此扩展包已安装。如需重新导入，请先卸载已有的包。"
+          }
+        }
+      }
+    },
     "editor.appBundleID": {
       "localizations": {
         "en": {
@@ -182,13 +550,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Comma-separated; values are passed to the script via MENUMATE_VARIANT"
+            "value": "Comma-separated; values are passed to the script via ANYWHERE_VARIANT"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "逗号分隔;值经 MENUMATE_VARIANT 传给脚本"
+            "value": "逗号分隔;值经 ANYWHERE_VARIANT 传给脚本"
           }
         }
       }
@@ -246,13 +614,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Relative paths are based on the MenuMate data directory, e.g. Templates"
+            "value": "Relative paths are based on the AnyWhere data directory, e.g. Templates"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "相对路径基于 MenuMate 数据目录,如 Templates"
+            "value": "相对路径基于 AnyWhere 数据目录,如 Templates"
           }
         }
       }
@@ -294,13 +662,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Submenu \"MenuMate ▸\""
+            "value": "Submenu \"AnyWhere ▸\""
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "子菜单「MenuMate ▸」"
+            "value": "子菜单「AnyWhere ▸」"
           }
         }
       }
@@ -454,13 +822,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Relative paths are based on the MenuMate data directory"
+            "value": "Relative paths are based on the AnyWhere data directory"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "相对路径基于 MenuMate 数据目录"
+            "value": "相对路径基于 AnyWhere 数据目录"
           }
         }
       }
@@ -886,13 +1254,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Used by actions that read MENUMATE_TERMINAL / MENUMATE_EDITOR (e.g. the Developer pack) — switch apps without editing scripts."
+            "value": "Used by actions that read ANYWHERE_TERMINAL / ANYWHERE_EDITOR (e.g. the Developer pack) — switch apps without editing scripts."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "供读取 MENUMATE_TERMINAL / EDITOR 的动作(如 Developer 扩展包)使用;切换无需改脚本。"
+            "value": "供读取 ANYWHERE_TERMINAL / EDITOR 的动作(如 Developer 扩展包)使用;切换无需改脚本。"
           }
         }
       }
@@ -966,13 +1334,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "MenuMate will launch at startup and stay in the menu bar"
+            "value": "AnyWhere will launch at startup and stay in the menu bar"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "MenuMate 将随系统启动并常驻菜单栏"
+            "value": "AnyWhere 将随系统启动并常驻菜单栏"
           }
         }
       }
@@ -1206,13 +1574,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "MenuMate %@ · Open Source (MIT) · Grant Permissions Once"
+            "value": "AnyWhere %@ · Open Source (MIT) · Grant Permissions Once"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "MenuMate %@ · 开源 (MIT) · 权限一次授予,长期省心"
+            "value": "AnyWhere %@ · 开源 (MIT) · 权限一次授予,长期省心"
           }
         }
       }
@@ -1409,18 +1777,18 @@
         }
       }
     },
-    "menu.filterMenuMateOnly": {
+    "menu.filterAnyWhereOnly": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "MenuMate only"
+            "value": "AnyWhere only"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "仅 MenuMate"
+            "value": "仅 AnyWhere"
           }
         }
       }
@@ -1649,18 +2017,18 @@
         }
       }
     },
-    "menu.sectionMenuMateTopLevel": {
+    "menu.sectionAnyWhereTopLevel": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "MENUMATE · TOP LEVEL"
+            "value": "ANYWHERE · TOP LEVEL"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "MENUMATE · 顶层"
+            "value": "ANYWHERE · 顶层"
           }
         }
       }
@@ -1846,13 +2214,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Open MenuMate Settings…"
+            "value": "Open AnyWhere Settings…"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "打开 MenuMate 设置…"
+            "value": "打开 AnyWhere 设置…"
           }
         }
       }
@@ -1862,13 +2230,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Quit MenuMate"
+            "value": "Quit AnyWhere"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "退出 MenuMate"
+            "value": "退出 AnyWhere"
           }
         }
       }
@@ -1910,13 +2278,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "MenuMate Settings"
+            "value": "AnyWhere Settings"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "MenuMate 设置"
+            "value": "AnyWhere 设置"
           }
         }
       }
@@ -2230,13 +2598,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "MenuMate injects context-menu items through a Finder extension. You only need to enable it once in System Settings."
+            "value": "AnyWhere injects context-menu items through a Finder extension. You only need to enable it once in System Settings."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "MenuMate 通过 Finder 扩展注入右键菜单。只需在系统设置中开启一次。"
+            "value": "AnyWhere 通过 Finder 扩展注入右键菜单。只需在系统设置中开启一次。"
           }
         }
       }
@@ -2278,13 +2646,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Launch MenuMate at login"
+            "value": "Launch AnyWhere at login"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "登录时启动 MenuMate"
+            "value": "登录时启动 AnyWhere"
           }
         }
       }
@@ -2294,13 +2662,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "MenuMate is a lightweight menu bar app. We recommend launching it at login so your context menu is always available."
+            "value": "AnyWhere is a lightweight menu bar app. We recommend launching it at login so your context menu is always available."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "MenuMate 是一个轻量的菜单栏应用。建议随系统启动,你的右键菜单才能始终可用。"
+            "value": "AnyWhere 是一个轻量的菜单栏应用。建议随系统启动,你的右键菜单才能始终可用。"
           }
         }
       }
@@ -2550,13 +2918,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Welcome to MenuMate"
+            "value": "Welcome to AnyWhere"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "欢迎使用 MenuMate"
+            "value": "欢迎使用 AnyWhere"
           }
         }
       }
@@ -3942,13 +4310,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Provided by %@. The menu items it injects are drawn by the extension at runtime in a separate process—MenuMate can't preview or edit its contents, only toggle the whole extension on or off."
+            "value": "Provided by %@. The menu items it injects are drawn by the extension at runtime in a separate process—AnyWhere can't preview or edit its contents, only toggle the whole extension on or off."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "由 %@ 提供。它注入的具体菜单项由该扩展在运行时绘制,运行在独立进程中——MenuMate 无法预览或编辑其内容,只能整体开关这个扩展。"
+            "value": "由 %@ 提供。它注入的具体菜单项由该扩展在运行时绘制,运行在独立进程中——AnyWhere 无法预览或编辑其内容,只能整体开关这个扩展。"
           }
         }
       }
@@ -4054,13 +4422,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This is a system-provided Quick Action / Service. MenuMate can only show or hide it in the context menu—it cannot rename, reorder, or edit its behavior."
+            "value": "This is a system-provided Quick Action / Service. AnyWhere can only show or hide it in the context menu—it cannot rename, reorder, or edit its behavior."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这是系统提供的「快速操作 / 服务」。MenuMate 只能控制它在右键菜单里的显示或隐藏——无法改名、重排或编辑其行为。"
+            "value": "这是系统提供的「快速操作 / 服务」。AnyWhere 只能控制它在右键菜单里的显示或隐藏——无法改名、重排或编辑其行为。"
           }
         }
       }
@@ -4502,13 +4870,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No repositories tagged \"menumate-pack\" found yet. Be the first — add the topic to your pack repo!"
+            "value": "No repositories tagged \"anywhere-pack\" found yet. Be the first — add the topic to your pack repo!"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "还没有带 menumate-pack 标记的社区包。给你的扩展包仓库加上这个 topic 就能上榜!"
+            "value": "还没有带 anywhere-pack 标记的社区包。给你的扩展包仓库加上这个 topic 就能上榜!"
           }
         }
       }
@@ -4998,13 +5366,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Only items other sources injected — your MenuMate actions are untouched."
+            "value": "Only items other sources injected — your AnyWhere actions are untouched."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "只整理别的来源塞进来的项,不动你自己的 MenuMate 动作。"
+            "value": "只整理别的来源塞进来的项,不动你自己的 AnyWhere 动作。"
           }
         }
       }

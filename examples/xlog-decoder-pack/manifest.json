@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 3,
+  "name": "Xlog Decoder",
+  "description": "使用包内独立 CLI 解密所选 xlog 文件，在原目录生成日志，无需安装 App。",
+  "icon": "lock.open",
+  "actions": [
+    {
+      "id": "decode-xlog",
+      "title": "解密 Xlog",
+      "icon": "lock.open",
+      "script": "actions/decode-xlog.zsh",
+      "targets": "files",
+      "extensions": ["xlog"],
+      "placement": "topLevel",
+      "timeoutSeconds": 600,
+      "settings": [
+        {
+          "key": "PRIVATE_KEY",
+          "title": "解密私钥",
+          "type": "password",
+          "description": "64 位十六进制私钥；未加密日志可留空。保存后运行时自动使用。"
+        }
+      ]
+    }
+  ]
+}

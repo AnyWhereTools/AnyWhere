@@ -1,9 +1,9 @@
 #!/bin/zsh
 # Convert each selected image to the format chosen in the submenu, writing alongside the original.
-# Demonstrates: a submenu (manifest `variants.fixed`) whose value arrives via $MENUMATE_VARIANT;
+# Demonstrates: a submenu (manifest `variants.fixed`) whose value arrives via $ANYWHERE_VARIANT;
 # UTI gating (manifest `utis: ["public.image"]`) so it only appears on images.
 emulate -L zsh
-fmt="${MENUMATE_VARIANT:?no target format}"
+fmt="${ANYWHERE_VARIANT:?no target format}"
 n=0
 for p in "$@"; do
   out="${p:r}.${fmt}"
