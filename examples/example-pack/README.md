@@ -1,5 +1,7 @@
 # AnyWhere Example Pack
 
+English · [简体中文](README.zh.md) · [Back to home](../../README.md)
+
 A reference [extension pack](../../docs/pack-spec.md) for AnyWhere. Copy this folder or fork
 it as a starting point for your own. Its version 1 manifest demonstrates the basic features;
 it remains compatible with the current version 3 format.
@@ -27,7 +29,7 @@ and reimport from the same folder to replace it. Duplicate imports are rejected.
 
 - **Configuration:** version 2 or later supports `settings` with text, password, toggle and
   dropdown fields. Users save values in the action detail panel; scripts read
-  `ANYWHERE_CONFIG_<KEY>`. Passwords are stored in Keychain.
+  `ANYWHERE_CONFIG_<KEY>`. Passwords are encrypted in the app's local data directory, without Keychain access.
 - **Suffix and regex:** version 3 adds `extensions` (literal, case-insensitive suffixes) and
   `filenamePattern` (whole-filename regex, case-insensitive by default). A UTI **or** suffix
   must match, followed by the regex if present; every selected item must pass.

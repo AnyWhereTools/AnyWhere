@@ -75,9 +75,15 @@ Packs can declare **text, password, toggle and dropdown** fields. Select a pack 
 receive saved values through `ANYWHERE_CONFIG_<KEY>` without asking for them on each run.
 **Clear Configuration** removes saved values and restores defaults.
 
-Passwords are stored in macOS Keychain; ordinary values are stored separately from the pack.
+App data stays in `~/Library/Application Support/AnyWhere/`. Passwords are encrypted locally
+with AES-256-GCM; ordinary settings remain local JSON files. Configuration reads and writes
+do not access Keychain or ask for a system password.
 Updates retain values for stable action IDs and field keys. Uninstalling retains configuration
 for reimport from the same source; clear it before uninstalling if you want it removed.
+
+**Upgrading from Keychain storage:** enter and save the password fields once again. The app
+does not read or delete old Keychain entries. Back up the entire `PrivateData/` directory,
+including both `key` and `secrets.enc`; a copy of the ciphertext alone cannot be restored.
 
 ### Pack matching: UTI, suffix and filename regex
 
@@ -185,7 +191,7 @@ repeating macOS permission prompts.
 ## Docs & contributing
 
 - [Extension Pack Specification](docs/pack-spec.md) · [basic example](examples/example-pack/) · [Xlog Decoder pack](examples/xlog-decoder-pack/)
-- [Contributing](CONTRIBUTING.md) · [Releasing](docs/RELEASING.md)
+- [Contributing](CONTRIBUTING.md) · [Releasing](docs/RELEASING.md) · [Security](SECURITY.md)
 - Core unit tests + preset-script tests + an App/extension compile check run in CI on pushes to `main` and pull requests (`.github/workflows/ci.yml`).
 
 ## Known limitations

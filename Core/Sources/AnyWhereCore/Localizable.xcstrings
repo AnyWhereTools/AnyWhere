@@ -1,6 +1,54 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "localSecrets.invalidKey": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The local encryption key is missing or damaged. Restore PrivateData from backup; existing ciphertext has not been overwritten."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本地加密密钥缺失或损坏。请从备份恢复 PrivateData 目录；原密文未被覆盖。"
+          }
+        }
+      }
+    },
+    "localSecrets.damagedVault": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cannot decrypt local password settings. The file may be damaged or the key may not match. Restore a complete backup including its key."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法解密本地密码配置，文件可能损坏或密钥不匹配。请恢复包含密钥的完整备份。"
+          }
+        }
+      }
+    },
+    "localSecrets.invalidFile": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid local encrypted storage path. Use regular files and folders inside the app data directory."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本地加密存储路径无效，请使用应用数据目录中的普通文件和文件夹。"
+          }
+        }
+      }
+    },
     "packSettings.invalidDeclaration": {
       "localizations": {
         "en": {

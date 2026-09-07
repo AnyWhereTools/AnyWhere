@@ -225,18 +225,18 @@
         }
       }
     },
-    "packConfig.keychainError": {
+    "packConfig.localEncryptionHint": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cannot access the Keychain (%d). Unlock it and allow access, then retry."
+            "value": "Passwords are encrypted and saved locally; no Keychain authorization is required."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法访问钥匙串（%d），请解锁并允许访问后重试。"
+            "value": "密码加密保存在本机，无需钥匙串授权。"
           }
         }
       }

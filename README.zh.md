@@ -17,7 +17,7 @@ AnyWhere 是一个**脚本优先**、开源(MIT)的菜单栏应用:加你自己�
 | 注入自定义脚本动作 | 部分支持 | ✓ 脚本优先,全可配置 |
 | 开关系统 Quick Actions / 服务 | ✗ | ✓ 读写 `pbs` 域 |
 | 开关第三方 Finder 扩展 | ✗ | ✓ `pluginkit` |
-| 安装扩展包(Git 仓库或本地文件夹) | ✗ | ✓ 见 [扩展包规范](docs/pack-spec.md) |
+| 安装扩展包(Git 仓库或本地文件夹) | ✗ | ✓ 见 [扩展包规范](docs/pack-spec.zh.md) |
 
 **核心理念是脚本优先**:连内置能力都是可编辑的 zsh 脚本——预设 = 出厂脚本,随时改、删、恢复。
 
@@ -51,13 +51,15 @@ AnyWhere 是一个**脚本优先**、开源(MIT)的菜单栏应用:加你自己�
 
 扩展包可声明**文本、密码、开关、下拉选择**配置项。在「右键菜单」选中包内动作，在右侧「插件配置」填写并点击「保存配置」，后续执行通过 `ANYWHERE_CONFIG_<KEY>` 自动传给脚本，无需每次输入。「清除配置」会删除已保存的值并恢复默认值。
 
-密码保存在 macOS 钥匙串，普通配置独立于扩展包保存。包更新时，动作 ID 和字段 key 不变即可保留配置。卸载默认保留配置，方便从同一来源重新导入；如需删除配置，请先清除再卸载。
+应用数据保存在 `~/Library/Application Support/AnyWhere/`。密码使用 AES-256-GCM 本地加密，普通配置使用本地 JSON 文件；配置读写不访问钥匙串，也不要求输入系统密码。包更新时，动作 ID 和字段 key 不变即可保留配置。卸载默认保留配置，方便从同一来源重新导入；如需删除配置，请先清除再卸载。
+
+**从钥匙串存储的旧版升级：**请重新填写密码字段并保存一次，应用不读取或删除旧钥匙串条目。备份时请保留整个 `PrivateData/` 目录，包括 `key` 和 `secrets.enc`；只有密文无法恢复。
 
 ### 插件匹配：UTI、后缀与文件名正则
 
 包作者可声明 UTI 类型匹配（`utis`）、忽略大小写的普通后缀（`extensions`）和完整文件名正则（`filenamePattern`，默认忽略大小写）。每个选中项须**命中任一 UTI 或后缀**，并额外满足所声明的正则；两个类型列表均为空时不限类型。**多选须全部符合**，作用对象限制仍然生效。
 
-插件配置使用清单 **schemaVersion 2 或更高版本**；后缀、正则使用 **3**。详见[扩展包规范](docs/pack-spec.md)、[基础示例包](examples/example-pack/)和 [Xlog Decoder 包](examples/xlog-decoder-pack/)。
+插件配置使用清单 **schemaVersion 2 或更高版本**；后缀、正则使用 **3**。详见[扩展包规范](docs/pack-spec.zh.md)、[基础示例包](examples/example-pack/README.zh.md)和 [Xlog Decoder 包](examples/xlog-decoder-pack/README.zh.md)。
 
 体验 Xlog 解密：本地导入 `examples/xlog-decoder-pack/`，启用「解密 Xlog」，在动作配置中保存私钥（未加密日志留空），再到 Finder 选中 `.xlog` / `.XLOG` 文件执行。日志输出在原文件旁。包内附带 Intel / Apple Silicon 独立 CLI，**无需安装 XlogDecoder.app**。
 
@@ -99,7 +101,7 @@ make build       # 调试构建
 make run         # 构建并启动
 ```
 
-随后启用 Finder 扩展(引导会带你到系统设置,或 `pluginkit -e use -i com.anywhere.app.FinderExtension`),并完成一次性授权。签名+公证的发布版见 [docs/RELEASING.md](docs/RELEASING.md)。
+随后启用 Finder 扩展(引导会带你到系统设置,或 `pluginkit -e use -i com.anywhere.app.FinderExtension`),并完成一次性授权。签名、公证和发布操作见[发布流程](docs/RELEASING.zh.md)。
 
 ## 脚本环境契约
 
@@ -121,7 +123,7 @@ AnyWhere 使用独立的 `com.anywhere.app` 标识，配置保存在
 | 退出码 `0` | 成功;stdout 首行作为摘要 |
 | 退出码非 `0` | 失败;stderr 进「最近执行」+ 通知 |
 
-详见 [pack-spec](docs/pack-spec.md#script-environment-contract)。
+详见[扩展包规范：脚本环境契约](docs/pack-spec.zh.md#script-environment-contract)。
 
 ## 架构
 
@@ -135,8 +137,8 @@ AnyWhere 使用独立的 `com.anywhere.app` 标识，配置保存在
 
 ## 文档与贡献
 
-- [扩展包规范](docs/pack-spec.md) · [基础示例包](examples/example-pack/) · [Xlog Decoder 包](examples/xlog-decoder-pack/)
-- [贡献指南](CONTRIBUTING.md) · [发布流程](docs/RELEASING.md)
+- [扩展包规范](docs/pack-spec.zh.md) · [基础示例包](examples/example-pack/README.zh.md) · [Xlog Decoder 包](examples/xlog-decoder-pack/README.zh.md)
+- [贡献指南](CONTRIBUTING.zh.md) · [发布流程](docs/RELEASING.zh.md) · [安全说明](SECURITY.zh.md)
 - Core 单元测试 + 预设脚本测试 + App/扩展编译检查在推送到 `main` 和提交 Pull Request 时由 CI 运行（`.github/workflows/ci.yml`）。
 
 ## 已知限制

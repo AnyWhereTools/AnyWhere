@@ -1,7 +1,12 @@
 # Releasing AnyWhere
 
+English · [简体中文](RELEASING.zh.md) · [Back to home](../README.md)
+
 AnyWhere ships as a **Developer ID-signed, notarized `.dmg`** with **Sparkle** auto-updates.
 This document covers the one-time setup and the per-release flow.
+
+Keychain use below belongs to developer signing and release tooling. Plugin password settings
+use [local encrypted storage](pack-spec.md#settings--plugin-configuration-schemaversion-2-or-later).
 
 > Distribution requires a paid **Apple Developer Program** membership and a **Developer ID
 > Application** certificate. An "Apple Development" cert (free) is enough to build and run
@@ -93,11 +98,14 @@ notarizes + staples it, and prints the Sparkle signature. Artifact: `build/relea
 
 ### Via CI (recommended)
 
-Bump `CFBundleShortVersionString` / `CFBundleVersion` in `App/Info.plist`, commit, then tag:
+Commit the release changes, then create and push the version tag:
 
 ```bash
 git tag v1.0.0 && git push origin v1.0.0
 ```
+
+The release script takes the version from the tag, overrides `MARKETING_VERSION`, and generates
+an increasing `CURRENT_PROJECT_VERSION`. Keep the build-variable placeholders in `App/Info.plist`.
 
 `release.yml` then builds, signs, notarizes, creates a GitHub Release with the dmg, regenerates
 `appcast.xml`, and pushes it to `main`. Sparkle clients poll `SUFeedURL`
@@ -109,7 +117,7 @@ git tag v1.0.0 && git push origin v1.0.0
 
 - [ ] `SUPublicEDKey` in `project.yml` is your real Sparkle public key (not the placeholder).
 - [ ] Verify the default background check (`SUEnableAutomaticChecks: true`): an available update prompts, while no update or a check failure does not. Manual checks still report their results.
-- [ ] Version bumped in `App/Info.plist`.
+- [ ] Version tag and the release script's version/build numbers are correct.
 - [ ] All nine GitHub secrets set (for CI).
 - [ ] `xcrun stapler validate build/release/AnyWhere-<v>.dmg` passes.
 - [ ] Gatekeeper check on a clean machine: `spctl -a -vvv -t install AnyWhere-<v>.dmg`.

@@ -1,0 +1,227 @@
+# AnyWhere 扩展包规范
+
+[English](pack-spec.md) · 简体中文 · [返回首页](../README.zh.md)
+
+**扩展包**是根目录包含 `manifest.json` 及其声明脚本的文件夹。可以从 Git 仓库导入，也可以直接选择本地文件夹，无需 Git。AnyWhere 安装只读副本，展示脚本和附带文件供用户审阅，导入的动作默认**禁用**，由用户逐个启用。
+
+[基础示例包](../examples/example-pack/README.zh.md) 展示 UTI 过滤和子菜单；[Xlog Decoder 包](../examples/xlog-decoder-pack/README.zh.md) 展示本地导入、独立 CLI、后缀匹配和密码配置。
+
+## 目录结构与导入来源
+
+```text
+your-pack/
+├── manifest.json          # 必须位于包根目录
+├── actions/               # 脚本目录，可自行组织，通过清单引用
+│   ├── foo.zsh
+│   └── bar.zsh
+└── bin/                   # 可选的独立 CLI，需保留可执行权限
+```
+
+支持以下来源：
+
+- 本地文件夹：在「扩展包 → 导入 → 选择本地文件夹…」中选择包含 `manifest.json` 的目录，不要求它是 Git 仓库。
+- `owner/repo`：展开为 `https://github.com/owner/repo.git`。
+- 完整的 `https://…` 或 `git@…` Git 地址。
+
+## `manifest.json`
+
+以下示例使用 JSONC 展示注释，实际 `manifest.json` 必须是**不含注释的 JSON**。
+
+```jsonc
+{
+  "schemaVersion": 3,              // 可选，默认 1；后缀和正则要求版本 3
+  "name": "Dev Tools",            // 必填，非空，扩展包显示名称
+  "author": "Li Hua",             // 可选，仅用于展示
+  "description": "Handy actions", // 可选，扩展包简介
+  "icon": "hammer",               // 可选，SF Symbol 名，默认 shippingbox
+  "actions": [                     // 必填，至少包含一个动作
+    {
+      "id": "copy-basename",      // 必填，包内唯一且稳定的动作标识
+      "title": "Copy file name",  // 必填，右键菜单标题
+      "icon": "doc.on.doc",       // 可选，默认 bolt
+      "script": "actions/copy-basename.zsh", // 必填，包内相对路径
+      "targets": "files",         // 可选：files / folders / any / container，默认 any
+      "utis": ["public.image"],    // 可选，默认 []，按 UTI 类型包含关系匹配
+      "extensions": ["xlog"],     // 可选，普通后缀，忽略大小写；与 UTI 为「或」
+      "filenamePattern": "device-.*\\.(png|xlog)", // 可选，完整文件名正则，作为额外限制
+      "placement": "topLevel",    // 可选：topLevel / submenu，默认 topLevel
+      "variants": { "fixed": ["png", "jpeg"] }, // 可选，子菜单项
+      "timeoutSeconds": 60        // 可选，默认 60 秒
+    }
+  ]
+}
+```
+
+未知字段会被忽略，未填写的可选字段使用默认值。请正确声明版本，避免旧客户端忽略它不认识的新字段。
+
+### `schemaVersion`：功能版本
+
+| 版本 | 支持的功能 |
+|------|------------|
+| `1` | 基础动作、`targets`、`utis`、菜单位置、子菜单和超时 |
+| `2` | 版本 1 的全部功能，加上 `settings` 插件配置 |
+| `3` | 版本 2 的全部功能，加上 `extensions` 后缀和 `filenamePattern` 正则 |
+
+当前版本为 **3**，省略时默认为 **1**。同时使用配置项和后缀或正则时，应填写 **3**。已有版本 1、2 的扩展包继续兼容；客户端会拒绝高于自身支持版本的包。
+
+### `id`：保持稳定
+
+AnyWhere 按动作 `id` 识别更新前后的同一个动作，并保留启用状态。修改 `id` 会被视为删除旧动作并新增一个默认禁用的动作。建议使用稳定的英文小写短横线名称，例如 `decode-xlog`。
+
+### `script`：包内相对路径
+
+路径必须非空，不得以 `/` 开头，任何路径段都不能是 `..`。脚本必须实际存在于包内该位置，不能通过相对路径跳出包目录。
+
+### `targets`：作用对象
+
+| 值 | 显示条件 |
+|----|----------|
+| `files` | 选中一个或多个文件，不包含文件夹 |
+| `folders` | 选中一个或多个文件夹 |
+| `any` | 选中文件、文件夹或两者混合 |
+| `container` | 在目录空白处右键，没有选中项 |
+
+`container` 与其余三种选中项场景互斥，根据动作用途选择一种。
+
+### `utis`：系统文件类型
+
+UTI 是 macOS 的统一类型标识。这里采用 `UTType` 的类型包含关系匹配，而不是比较字符串是否相等。例如 `public.image` 可以匹配多种图片格式。
+
+常见值包括 `public.image`、`public.movie`、`public.audio`、`com.adobe.pdf`、`public.text`、`public.source-code` 和 `public.archive`。UTI 查询结果可能受本机注册的文件类型影响；只按 `.xlog` 等后缀过滤时，使用 `extensions` 更直接。
+
+### `extensions` 与 `filenamePattern`：后缀和正则
+
+这两个字段要求 **schemaVersion 3**。
+
+- `extensions` 是**普通文件后缀数组**，例如 `["xlog", "tar.gz"]`。忽略大小写，允许前导点，`".XLOG"` 与 `"xlog"` 等价。`tar.gz` 可匹配 `backup.TAR.GZ`；`xlog` 不匹配 `a.xlog.bak` 或没有文件名主体的 `.xlog`。后缀只匹配文件，不匹配文件夹。允许字母、数字、点、`_`、`-`、`+`；不允许通配符、路径、正则语法、空后缀或连续的空分段。
+- `filenamePattern` 是 ICU 正则表达式，匹配**完整文件名（包含后缀）**，不包含父目录路径。默认忽略大小写，可用 ICU 内联标志覆盖。例如 `"device-.*\\.xlog"` 匹配 `DEVICE-001.XLOG`。JSON 中的反斜杠必须转义。导入时会拒绝空表达式和非法正则；手工修改运行配置造成非法规则时，动作不会在选中项菜单中显示。
+- `targets` 和选中数量限制仍然有效。只要 `utis` 或 `extensions` 中有一个非空，每个选中项就必须**命中至少一个 UTI 或后缀**；两个列表均为空则不限类型。设置了正则时，还必须**额外满足正则**。多选时**所有选中项都须符合**。
+- `container` 没有选中文件名，不能声明后缀或文件名正则。
+
+仅允许 `.xlog` 文件的动作字段如下：
+
+```json
+{
+  "targets": "files",
+  "extensions": ["xlog"]
+}
+```
+
+这是动作字段片段，应放入 `actions` 数组中的某个对象，与 `id`、`title`、`script` 一起使用。
+
+自建动作的编辑界面只提供普通后缀输入，支持逗号或空白分隔并统一大小写。旧 UTI／正则规则只读保留；修改后缀或选择「改用后缀匹配」后才替换旧规则，修改其他字段不影响它们。插件包的匹配规则在详情中只读展示，导入审阅时也会显示。
+
+左侧分类预览近似判断 UTI 和后缀，不验证正则；正则需在 Finder 中用真实文件名验证。
+
+### `variants`：子菜单
+
+将动作展开为子菜单，选中的值通过 `$ANYWHERE_VARIANT` 传给脚本。
+
+- `{ "fixed": ["png", "jpeg", "webp"] }`：固定子菜单列表。
+- `{ "directoryListing": "SomeDir" }`：将 `SomeDir` 中的文件列为子菜单项，相对路径基于 AnyWhere 数据目录。目录为空时，整个动作隐藏。
+
+普通动作无需填写 `variants`。
+
+### `settings`：插件配置项
+
+配置项要求 **schemaVersion 2 或更高版本**；同时使用后缀或正则时填写 **3**。没有 `settings` 的动作保持原有行为。下面也是放入单个动作对象的字段片段：
+
+```json
+{
+  "settings": [
+    { "key": "HOST", "title": "Server", "type": "text", "defaultValue": "localhost", "required": true },
+    { "key": "TOKEN", "title": "API token", "type": "password", "description": "Encrypted locally" },
+    { "key": "VERBOSE", "title": "Verbose output", "type": "toggle", "defaultValue": "false" },
+    { "key": "FORMAT", "title": "Format", "type": "select", "options": ["text", "json"], "defaultValue": "text" }
+  ]
+}
+```
+
+| `type` | 界面控件 | 传给脚本的值 |
+|--------|----------|--------------|
+| `text` | 文本框 | 字符串 |
+| `password` | 隐藏内容的密码框 | 从本地加密文件解密得到的字符串，不允许默认值 |
+| `toggle` | 开关 | `"true"` 或 `"false"`，默认 `"false"` |
+| `select` | 下拉选择 | `options` 中的一个值；非必填且未选择时为空字符串 |
+
+在「右键菜单」选中包内动作，即可在只读脚本上方看到配置表单。「保存配置」会校验并保存，后续执行和应用重启后自动读取；「清除配置」会删除已保存的值并恢复默认值。
+
+字段约束：
+
+- `key` 必须符合 `[A-Z][A-Z0-9_]{0,63}`，在同一个动作内唯一，并保持稳定。
+- `title` 必填；`description`、`defaultValue`、`required` 可选。`required` 是布尔值，配置值和 `defaultValue` 使用字符串。
+- `select` 必须提供非空且不重复的 `options`。`password` 不允许 `defaultValue`。
+- 未保存的值先使用 `defaultValue`；没有默认值时，开关为 `"false"`，其他类型为空字符串。
+- 运行时只将当前动作声明的字段注入为 `ANYWHERE_CONFIG_<KEY>`。必填项缺失或值非法时停止执行并提示配置错误。
+- 脚本应将配置作为数据使用并加引号，例如 `"$ANYWHERE_CONFIG_HOST"`，不要作为 Shell 代码求值。
+
+### 本地保存、加密与备份
+
+用户配置独立于扩展包保存：
+
+| 数据 | 路径（相对于 `~/Library/Application Support/AnyWhere/`） |
+|------|------------------------------------------------------|
+| 普通配置 | `PackConfigurations/<动作 UUID>.json` |
+| 密码密文 | `PrivateData/secrets.enc` |
+| 本地加密密钥 | `PrivateData/key` |
+
+密码使用 AES-256-GCM 加密，首次保存时随机生成 256 位密钥。`PrivateData/` 目录权限为 `0700`，密钥和密文文件为 `0600`。密码不进入菜单快照或普通配置文件；执行输出中原样出现的密码会被遮蔽。脚本执行时仍能使用它声明的密码配置。
+
+包更新时，动作 ID 和字段 key 不变即可保留配置。卸载默认保留配置，从同一来源重新导入可继续使用；如需删除配置，请先点击「清除配置」再卸载。不同来源会产生不同的动作身份，不保证继承旧值。
+
+配置读写**不访问钥匙串、不要求输入系统密码**。从旧版升级时，请重新填写并保存一次密码字段；旧钥匙串条目不读取也不删除。本地加密不改变清单格式和脚本环境变量，已有包无需因此提高版本号。
+
+备份必须包含整个 `PrivateData/`，同时保留密钥和密文。密文损坏或密钥缺失、不匹配时会报错，不自动重置原数据。本地加密防止直接查看明文，文件权限限制其他用户访问；以当前用户身份取得密钥和密文的进程仍可解密。应用没有内置固定共享密钥。
+
+Xlog Decoder 的[清单](../examples/xlog-decoder-pack/manifest.json)将 `PRIVATE_KEY` 声明为 `password`，[脚本](../examples/xlog-decoder-pack/actions/decode-xlog.zsh)通过 `"${ANYWHERE_CONFIG_PRIVATE_KEY-}"` 读取。清单只描述字段，不包含真实私钥。用户填写一次后，脚本直接调用包内解码器，不再逐次弹出输入框。
+
+<a id="script-environment-contract"></a>
+
+## 脚本环境契约
+
+扩展包脚本和内置预设一样，由 `/bin/zsh` 执行。
+
+| 变量或参数 | 含义 |
+|------------|------|
+| `$1 … $n` | 选中项的绝对路径；`container` 动作收到目录路径 |
+| `ANYWHERE_PATHS` | 全部路径，以换行分隔 |
+| `ANYWHERE_VARIANT` | 选中的子菜单值；没有子菜单时为空 |
+| `ANYWHERE_DATA` | AnyWhere 数据目录，可保存脚本状态 |
+| `ANYWHERE_TEMPLATES` | 模板目录 |
+| `ANYWHERE_TERMINAL` / `ANYWHERE_EDITOR` | 用户已配置的默认终端／编辑器 bundle ID |
+| `ANYWHERE_SCRIPT` | 脚本自身绝对路径；`${0:A:h}` 是脚本所在目录 |
+| `ANYWHERE_CONFIG_<KEY>` | 当前动作声明的配置项的已保存值或默认值 |
+| 工作目录 | 第一个选中项的父目录；若该项本身是文件夹，则使用它自身 |
+| 退出码 `0` | 成功，stdout 第一行作为摘要 |
+| 非 `0` 退出码 | 失败，stderr 显示在「最近执行」和通知中 |
+
+使用 `"$@"` 或 `ANYWHERE_PATHS` 读取输入，不要把路径拼成 Shell 命令文本。
+
+声明的 zsh 脚本由解释器执行，无需可执行位；脚本直接启动的包内 CLI **需要可执行权限**。对于前文的目录结构，`actions/` 下的脚本可这样找到独立解码器：
+
+```zsh
+pack_root="${0:A:h:h}"
+decoder="$pack_root/bin/xlog-decoder"
+```
+
+这样不依赖工作目录，也无需另外安装包含解码器的 App。
+
+## 导入与审阅流程
+
+1. **准备**：Git 来源执行 `git clone --depth 1`；本地来源复制到临时目录并保留可执行权限。导入过程不执行脚本。
+2. **审阅**：逐一打开只读脚本后才能继续。未声明为动作脚本的其他文件也会列出，包括二进制，需要单独确认。每个动作的作用对象、UTI、后缀和正则也会展示。
+3. **确认**：包移动到 `~/Library/Application Support/AnyWhere/Packs/<key>/`，动作加入配置并标记包来源，脚本路径解析为安装后的绝对路径。动作默认禁用，由用户逐个启用。
+
+已安装脚本和匹配规则只读。需要修改时，编辑源文件夹或 fork 源仓库，再导入替换版本。用户仍可在设置中修改菜单标题、位置、排序、启用状态及包声明的配置值。
+
+### 更新与重新导入
+
+本地包安装的是独立副本，不检查 Git 更新。移动或编辑原文件夹不会影响已安装的动作。同一来源不能重复导入；替换前先卸载已有包。
+
+Git 包通过「检查更新」比较远端 `HEAD` 与已安装版本的 SHA。更新时克隆新版本，展示文件的新增、删除、修改及新动作，用户确认后应用。按动作 `id` 保留启用状态，新增动作默认禁用，远端删除的动作也会移除。
+
+## 发布与社区发现
+
+符合规范的公开 Git 仓库可直接按 URL 导入，无需注册或提交审核。为仓库添加 GitHub topic **`anywhere-pack`**，即可通过 AnyWhere 的社区扩展包入口发现。
+
+脚本以当前用户权限执行。作者应保持脚本易于审阅、尽量减少依赖；用户应在启用前检查脚本和附带文件，只导入可信来源。更多说明见[安全说明](../SECURITY.zh.md)。

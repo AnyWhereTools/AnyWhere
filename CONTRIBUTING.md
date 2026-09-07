@@ -1,5 +1,7 @@
 # Contributing to AnyWhere
 
+English · [简体中文](CONTRIBUTING.zh.md) · [Back to home](README.md)
+
 Thanks for your interest! AnyWhere is a SwiftUI menu-bar app + Finder Sync extension, with a
 pure-logic Swift package at its core.
 
@@ -52,6 +54,10 @@ AnyWhere uses **String Catalogs** with **abstract keys** (English is the source 
 **Adding a language:** open the relevant `.xcstrings` in Xcode, add the language, translate
 the keys. No code changes needed. Don't introduce new English-string-as-key or hard-coded
 user-facing strings.
+
+Maintain user documentation in language pairs: `.md` for English and `.zh.md` for Simplified
+Chinese. Chinese pages should link to Chinese documentation, with a language switch at the top.
+Keep the pack specification and examples in sync when changing pack features.
 
 ## Adding a built-in preset
 

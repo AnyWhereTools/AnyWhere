@@ -1,5 +1,7 @@
 # Security
 
+English · [简体中文](SECURITY.zh.md) · [Back to home](README.md)
+
 ## Reporting a vulnerability
 
 Please report security issues privately via **GitHub Security Advisories**
@@ -18,7 +20,7 @@ extension. The security posture follows from that split.
   AnyWhere never `eval`s or string-interpolates selected paths into a command.
 
 - **Extension packs are read-only on import and default-disabled.** Import is a
-  `git clone --depth 1` that **never executes anything**. The review step shows every
+  `git clone --depth 1` or a local folder copy that **never executes scripts**. The review step shows every
   manifest-declared script **and every other non-metadata file in the repo** (hidden
   scripts, executables, and binaries are flagged), because a declared script can `source`
   sibling files via `pack_root`. Imported actions are added **disabled** until you enable
@@ -33,6 +35,15 @@ extension. The security posture follows from that split.
   snapshot can at worst change how the menu *looks* — it can never run a script, because
   every click is re-validated against the local on-disk config: the action id must exist,
   be enabled, and its script path must exist on disk.
+
+- **Plugin passwords are encrypted locally.** CryptoKit AES-256-GCM authenticates a versioned
+  vault in `~/Library/Application Support/AnyWhere/PrivateData/`. A per-installation random
+  256-bit key is stored in that directory (`0700`); the key and vault files are `0600`.
+  Configuration operations do not use Keychain or request a system password. Backups require
+  both files. A missing/wrong key or damaged vault fails without resetting existing data.
+  This is protection at rest, not isolation from another process running as the same user:
+  access to both files allows decryption. Scripts receive only their declared configuration
+  fields, and literal password echoes are masked before entering execution history.
 
 - **"Remove Quarantine" is a deliberate Gatekeeper bypass.** If you add an action that
   deletes `com.apple.quarantine`, only run it on files you trust — it removes the macOS

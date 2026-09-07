@@ -1,57 +1,82 @@
 # Xlog Decoder for AnyWhere
 
-符合 [AnyWhere 扩展包规范](../../docs/pack-spec.md) 的 Finder 右键脚本。
-附带独立 Rust 解码器 `bin/xlog-decoder`，无需安装 `XlogDecoder.app`，不附带私钥。
-脚本按自身位置查找 CLI，移动时请保留 `actions/` 与 `bin/` 的目录结构。
+English · [简体中文](README.zh.md) · [Back to home](../../README.md)
 
-CLI 从 XlogDecoder 1.3.1 提取，包含 Intel (`x86_64`) 和 Apple Silicon (`arm64`) 两种架构，
-动态链接仅依赖 macOS 系统库，不依赖 Flutter 或 App 内的 Framework。
+A Finder action following the [AnyWhere pack specification](../../docs/pack-spec.md).
+It includes the standalone Rust CLI `bin/xlog-decoder`; **XlogDecoder.app is not required**.
+No private key is bundled. The script locates the CLI relative to itself, so preserve the
+`actions/` and `bin/` directory layout when moving the pack.
 
-## 使用
+The CLI was extracted from XlogDecoder 1.3.1. It includes Intel (`x86_64`) and Apple Silicon
+(`arm64`) architectures and links only to macOS system libraries, without Flutter or app frameworks.
 
-1. 将整个扩展包目录保存到本机，保留 `bin/xlog-decoder` 的可执行权限。
-2. 在 AnyWhere → **扩展包 → 导入 → 选择本地文件夹…** 中选择本目录（包含 `manifest.json`），审阅脚本及附带的 CLI，确认导入后启用「解密 Xlog」。无需创建 Git 仓库。
-3. 在「右键菜单」中选中「解密 Xlog」，在右侧「插件配置」填写解密私钥并点击「保存配置」；未加密日志留空。之后在 Finder 选择 `.xlog` 文件执行，运行时不再弹出输入框。
-4. 输出保存在各输入文件旁边：`sample.xlog` → `sample.log`；同名文件存在时生成 `sample 2.log`、`sample 3.log` 等。
+## Usage
 
-也可以将本目录作为独立 Git 仓库发布（`manifest.json` 必须位于仓库根），
-再按项目的扩展包流程通过仓库 URL 导入、审阅并启用动作。
+1. Save the entire pack folder locally and retain the executable permission on `bin/xlog-decoder`.
+2. In AnyWhere → **Extension Packs → Import → Choose Local Folder…**, select this folder
+   containing `manifest.json`. Review the script and bundled CLI, confirm, then enable **解密 Xlog**.
+   No Git repository is needed.
+3. Select the action under **Context Menu**, enter the decryption key in **Plugin Configuration**
+   and click **Save Configuration**. Leave it blank for unencrypted logs. Subsequent runs use
+   the saved key without an input dialog.
+4. Select `.xlog` files in Finder. Output is saved beside each input: `sample.xlog` → `sample.log`.
+   Existing outputs are preserved by choosing `sample 2.log`, `sample 3.log`, and so on.
 
-本地导入会复制整个包，导入后移动原目录不影响执行；本地包不检查 Git 更新。
-同一来源目录已安装时会拒绝重复导入，如需替换版本，请先卸载旧包再重新导入。
+You can also publish this folder as its own Git repository, keeping `manifest.json` at the
+root, then import its URL through the regular pack review flow.
 
-终端直接调用脚本时，需要自行提供配置环境变量（AnyWhere 运行时会自动注入）：
+Local import copies the whole pack; moving the source does not affect installed actions.
+Local packs do not check Git updates. Duplicate imports from the same folder are rejected;
+uninstall the existing pack before reimporting a replacement.
+
+When running the script in Terminal, supply its configuration environment variable yourself
+(AnyWhere injects this automatically):
 
 ```sh
-ANYWHERE_CONFIG_PRIVATE_KEY="<私钥>" /bin/zsh actions/decode-xlog.zsh "/absolute/path/sample.xlog"
+ANYWHERE_CONFIG_PRIVATE_KEY="<private-key>" /bin/zsh actions/decode-xlog.zsh "/absolute/path/sample.xlog"
 ```
 
-也可以直接调用 CLI，不弹出输入框（未加密日志省略 `-p`）：
+Or call the CLI directly, omitting `-p` for unencrypted logs:
 
 ```sh
-./bin/xlog-decoder decode -i "/absolute/path/sample.xlog" -o "/absolute/path/sample.log" -p "<私钥>"
+./bin/xlog-decoder decode -i "/absolute/path/sample.xlog" -o "/absolute/path/sample.log" -p "<private-key>"
 ```
 
-直接调用 CLI 时不包含脚本提供的重名编号和输出检查。
+Direct CLI invocation does not include the wrapper's output checks or automatic output numbering.
 
-更换私钥：在动作详情页的「插件配置」修改后保存，或使用「清除配置」。
-本包使用 schemaVersion 3，需要支持插件配置和后缀匹配的 AnyWhere 版本。
+To change the key, edit and save the action's configuration, or choose **Clear Configuration**.
+After upgrading from the old version, enter and save the key once again. The new version neither
+reads nor deletes old Keychain entries and does not request Keychain authorization.
+This pack uses **schemaVersion 3**, requiring a client with plugin configuration and suffix matching.
 
-## 清单与配置
+## Manifest and configuration
 
-- `targets: "files"`、`extensions: ["xlog"]`：仅匹配文件，大小写不敏感，无需查询或填写动态 UTI。
-- `settings` 中的 `PRIVATE_KEY` 使用 `password` 类型：界面显示为密码框，保存一次后自动读取；未加密日志可留空。
-- 本包未设置 `filenamePattern`，因此不限制文件名前缀。若只处理特定命名，可在源清单的动作中增加
-  `"filenamePattern": "device-.*\\.xlog"`，再重新导入；正则匹配完整文件名，默认忽略大小写。
-- 配置与包文件独立保存。卸载后从同一来源重新导入可复用配置；若希望删除私钥，请先点击「清除配置」再卸载。
+- `targets: "files"` and `extensions: ["xlog"]` match files only, ignoring case, without a dynamic UTI.
+- `PRIVATE_KEY` is a `password` setting: masked in the UI, saved once and reused. It is optional for unencrypted logs.
+- No `filenamePattern` is declared, so file prefixes are unrestricted. To restrict naming, add
+  `"filenamePattern": "device-.*\\.xlog"` to the source action and reimport. Regex matches the
+  whole filename and ignores case by default.
+- Configuration lives outside the pack. Reimporting the same source can reuse it; clear
+  configuration before uninstalling if you want to remove the saved key.
 
-字段的组合关系、版本兼容和四种配置控件详见[扩展包规范](../../docs/pack-spec.md)。
+See the [pack specification](../../docs/pack-spec.md) for filter combinations, version compatibility
+and the four configuration controls.
 
-## 行为与边界
+## Behavior and limits
 
-- 使用 `"$@"` 接收文件，支持空格、中文和多选；`.xlog` 扩展名不区分大小写。
-- 菜单通过 `targets: files` 与 `extensions: ["xlog"]` 过滤，只有全部选中项均为 `.xlog` 文件时才显示，不依赖各台 Mac 的 UTI 注册情况。脚本执行前仍会校验整批输入是否可读。
-- 私钥由 AnyWhere 保存到当前用户的钥匙串，按动作隔离；脚本通过 `ANYWHERE_CONFIG_PRIVATE_KEY` 读取，不自行操作钥匙串。私钥不写入扩展包或普通配置文件，执行输出中的原始私钥会被遮蔽。CLI 解码时仍通过 `-p` 参数传递。
-- 临时目录和输出默认仅当前用户可读写；先写临时文件，非空且解码器退出成功后才保存为 `.log`，原始文件保持不变。
-- 失败返回非零并写 stderr，批量中已成功的输出保留；成功时 stdout 首行提供结果摘要，整批处理超时为 600 秒。
-- 不解析或重新实现解密算法，也不验证日志完整性；部分损坏日志能否恢复取决于包内解码器，非空输出不代表全部记录恢复成功。
+- Inputs arrive through `"$@"`, supporting spaces, Chinese filenames and multi-selection.
+  The `.xlog` suffix is case-insensitive.
+- The menu action appears only when every selected item is an `.xlog` file. It is independent
+  of the UTI registered on each Mac. The script also checks every input is readable before decoding.
+- AnyWhere encrypts the key locally with AES-256-GCM in `PrivateData/`, isolated by action.
+  The script reads `ANYWHERE_CONFIG_PRIVATE_KEY`; it does not use Keychain. The key is excluded
+  from the pack and ordinary configuration files, and literal key echoes are masked in execution
+  output. The decoder CLI still receives the key through its `-p` argument.
+- Backups require both `PrivateData/key` and `PrivateData/secrets.enc`; ciphertext without the key cannot be restored.
+- Temporary directories and output default to current-user access only. Results are first written
+  to a temporary file, then saved only when the decoder exits successfully and output is nonempty.
+  Original files are preserved.
+- Failure returns nonzero and writes to stderr. Successful outputs from a partially failed batch
+  are retained. Success writes a first-line stdout summary; the batch timeout is 600 seconds.
+- The script does not reimplement decryption or verify log completeness. Recovery of damaged logs
+  depends on the bundled decoder; nonempty output does not prove every record was recovered.

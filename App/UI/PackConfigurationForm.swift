@@ -12,6 +12,10 @@ struct PackConfigurationForm: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(String(localized: "packConfig.title")).font(.system(size: 13, weight: .semibold))
+            if fields.contains(where: { $0.type == .password }) {
+                Text(String(localized: "packConfig.localEncryptionHint"))
+                    .font(.system(size: 11)).foregroundStyle(AWColor.label2)
+            }
             ForEach(fields) { field in
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .center, spacing: 12) {

@@ -1,5 +1,7 @@
 # AnyWhere Extension Pack Specification
 
+English · [简体中文](pack-spec.zh.md) · [Back to home](../README.md)
+
 An **extension pack** is a folder with a `manifest.json` at its root and the scripts it
 declares. Import it from a Git repository or directly from a local folder, without Git.
 AnyWhere installs a read-only clone or snapshot, shows the scripts and additional files for
@@ -31,6 +33,8 @@ Import sources accepted by AnyWhere:
 ---
 
 ## `manifest.json`
+
+The JSONC example below includes explanatory comments. Actual manifests must be JSON without comments.
 
 ```jsonc
 {
@@ -163,7 +167,7 @@ existing behavior.
 {
   "settings": [
     { "key": "HOST", "title": "Server", "type": "text", "defaultValue": "localhost", "required": true },
-    { "key": "TOKEN", "title": "API token", "type": "password", "description": "Stored in Keychain" },
+    { "key": "TOKEN", "title": "API token", "type": "password", "description": "Encrypted locally" },
     { "key": "VERBOSE", "title": "Verbose output", "type": "toggle", "defaultValue": "false" },
     { "key": "FORMAT", "title": "Format", "type": "select", "options": ["text", "json"], "defaultValue": "text" }
   ]
@@ -173,7 +177,7 @@ existing behavior.
 | `type` | UI control | Value passed to the script |
 |--------|------------|----------------------------|
 | `text` | Text field | A string |
-| `password` | Masked password field | A string loaded from Keychain; no default allowed |
+| `password` | Masked password field | A string decrypted from local storage; no default allowed |
 | `toggle` | Switch | `"true"` or `"false"`; defaults to `"false"` |
 | `select` | Dropdown | One of `options`, or an empty string when optional and unset |
 
@@ -190,11 +194,22 @@ existing behavior.
   Read variables as quoted data, for example `"$ANYWHERE_CONFIG_HOST"`; never evaluate them as shell code.
 - User values live outside the installed pack: ordinary values in
   `~/Library/Application Support/AnyWhere/PackConfigurations/<action UUID>.json`,
-  passwords in Keychain. Password values are excluded from menu snapshots and ordinary config files;
+  passwords in an AES-256-GCM vault at `~/Library/Application Support/AnyWhere/PrivateData/secrets.enc`.
+  A random 256-bit key is generated on the first password save and stored beside it as `key`.
+  The directory uses permissions `0700`, and the key and ciphertext files use `0600`.
+  Password values are excluded from menu snapshots and ordinary config files;
   literal secret echoes in execution output are masked. Scripts still receive and can use their secrets.
 - Pack updates keep values for stable action IDs and field keys. Uninstall retains configuration so
   reimporting the same source can reuse it; use Clear Configuration before uninstalling to remove values.
   A different source has a different action identity; do not rely on it inheriting saved values.
+- Configuration storage does not access Keychain or request a system password. Users upgrading
+  from the old Keychain implementation must enter and save their password fields once again;
+  old Keychain entries are neither read nor deleted. The manifest format and script variables
+  are unchanged, so existing packs do not need a version bump for local encryption.
+- Back up `PrivateData/` as a unit: both its key and ciphertext are required for recovery.
+  Corrupt ciphertext or a missing/mismatched key causes an error without resetting the vault.
+  This protects stored passwords from plain-text inspection and other users; a process with
+  access to both files as the current user can decrypt them. There is no hard-coded shared key.
 
 For a working password example, Xlog Decoder declares `PRIVATE_KEY` as `password` and reads
 `"${ANYWHERE_CONFIG_PRIVATE_KEY-}"`. The manifest contains the field declaration, never a real
@@ -275,3 +290,5 @@ pack discoverable, add the GitHub **topic** `anywhere-pack` to your repository; 
 **Security note for authors and users:** pack scripts run with the user's privileges. Keep
 scripts auditable and dependency-free; users should review every script before enabling it and
 never import packs from untrusted sources.
+
+See also the [security notes](../SECURITY.md).
