@@ -381,6 +381,8 @@ struct PvEditor: View {
             else { kindChoice = 1; inlineSource = spec.inlineSource ?? "" }
         case .openWith(let id):
             kindChoice = 2; appBundleID = id
+        case .openPluginUI:
+            break
         }
         extensionsText = action.matching.extensions.joined(separator: ", ")
         extensionsEdited = false
@@ -593,6 +595,11 @@ struct PvPackPanel: View {
     }
     private var resolvedScript: String {
         guard let action else { return script }
+        if action.kind == .openPluginUI,
+           let entry = AppState.shared.packManager.launcherEntry(actionID: action.id),
+           let page = entry.definition.ui?.entry,
+           let url = try? PluginResourceResolver.resolve(root: entry.directory, relativePath: page),
+           let text = try? String(contentsOf: url, encoding: .utf8) { return text }
         if case .runScript(let spec) = action.kind, let path = spec.scriptPath,
            let text = try? String(contentsOfFile: path, encoding: .utf8) {
             return text
@@ -681,7 +688,7 @@ struct PvPackPanel: View {
                     .id(action.id)
                     .id(configurationFields)
             }
-            CodeBlock(resolvedScript, lang: String(localized: "panel.langZshReadOnly"), maxHeight: 140)
+            CodeBlock(resolvedScript, lang: action?.kind == .openPluginUI ? "HTML" : String(localized: "panel.langZshReadOnly"), maxHeight: 140)
             HStack(spacing: 8) {
                 AWButton(String(localized: "panel.openRepoHome"), systemImage: "arrow.up.right.square", size: .sm) {
                     if let s = resolvedRepoURL, let url = URL(string: s) { NSWorkspace.shared.open(url) }
@@ -723,6 +730,7 @@ struct PvPackPanel: View {
 
     private func setEnabled(_ value: Bool) {
         guard var saved = action else { return }
+        if saved.packID != nil { AppState.shared.packManager.setActionEnabled(value, actionID: saved.id); return }
         saved.isEnabled = value
         onSave?(saved)
     }

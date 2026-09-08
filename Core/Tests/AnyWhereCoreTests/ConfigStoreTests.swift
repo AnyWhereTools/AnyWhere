@@ -17,6 +17,18 @@ final class ConfigStoreTests: XCTestCase {
         let config = try ConfigStore(directory: freshDir()).load()
         XCTAssertEqual(config, MenuConfig.defaultSeed())
     }
+    func testUIActionsPromoteConfigVersionAndRoundTrip() throws {
+        let dir = freshDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        var config = MenuConfig.defaultSeed()
+        config.schemaVersion = 1; config.actions[0].kind = .openPluginUI
+        let store = ConfigStore(directory: dir)
+        try store.save(config)
+        let loaded = try store.load()
+        XCTAssertEqual(loaded.schemaVersion, 2)
+        XCTAssertEqual(loaded.actions[0].kind, .openPluginUI)
+        XCTAssertEqual(try JSONDecoder().decode(MenuConfig.self, from: JSONEncoder().encode(loaded)), loaded)
+    }
 
     func testCacheInvalidatesWhenFileChanges() throws {
         let dir = freshDir()
@@ -44,10 +56,10 @@ final class ConfigStoreTests: XCTestCase {
         let store = ConfigStore(directory: dir)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         // actions 故意是 v1 解不开的形状——两阶段探测应在完整 decode 前就抛 IncompatibleSchema
-        let future = #"{"schemaVersion": 2, "actions": [{"unknownShape": true}]}"#
+        let future = #"{"schemaVersion": 5, "actions": [{"unknownShape": true}]}"#
         try Data(future.utf8).write(to: store.fileURL)
         XCTAssertThrowsError(try store.load()) { error in
-            XCTAssertEqual((error as? MenuConfig.IncompatibleSchema)?.found, 2)
+            XCTAssertEqual((error as? MenuConfig.IncompatibleSchema)?.found, 5)
         }
     }
 }

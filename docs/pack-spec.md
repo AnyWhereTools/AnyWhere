@@ -71,10 +71,31 @@ defaults above.
 | `1` | Basic actions, `targets`, `utis`, placement, variants and timeouts |
 | `2` | Version 1 plus `settings` for plugin configuration |
 | `3` | Version 2 plus `extensions` and `filenamePattern` |
+| `4` | Version 3 plus custom UI, launcher entries, independent switches and page capabilities |
 
-The current version is **3**. An omitted version defaults to **1**. Declare the version needed
+The current version is **4**. An omitted version defaults to **1**. Declare the version needed
 by your pack so older clients reject unsupported features. Combining settings with suffix or
-regex filters requires **3**; existing version 1 and 2 packs remain supported.
+regex filters requires at least **3**; existing version 1–3 packs remain supported.
+
+### Custom UI and launcher entries (version 4)
+
+| Field | Contract |
+|---|---|
+| Pack `uiApiVersion` | Required when a UI exists; currently `1` |
+| Action `ui` | `{ "entry": "ui/index.html", "height": 420 }`; local HTML, optional height |
+| Action `launcher` | `{ "keywords": ["text"] }`; registers search, keywords may be empty |
+| Action `contextMenu` | Defaults to `true`; `false` excludes the action from Finder |
+| Action `capabilities` | Page capability array: `clipboard.write`, `task.run` |
+| Action `script` | Optional with UI; required by `task.run` |
+
+Search and context-menu entries are independently enabled and start disabled. If both UI and
+script exist, opening the action only loads the page. `window.anywhere` exposes invocation
+context, ordinary configuration, pack-scoped storage, clipboard and cancellable tasks.
+Passwords remain in native configuration forms and are loaded by the backend host.
+
+See the [UI developer guide](plugin-ui.md) and [Text Toolbox](../examples/ui-tool-pack/README.md)
+for the full SDK, task protocol, limits, update and uninstall behavior. Existing pure scripts
+retain their execution behavior.
 
 ### `id` — keep it stable
 
@@ -200,7 +221,8 @@ existing behavior.
   Password values are excluded from menu snapshots and ordinary config files;
   literal secret echoes in execution output are masked. Scripts still receive and can use their secrets.
 - Pack updates keep values for stable action IDs and field keys. Uninstall retains configuration so
-  reimporting the same source can reuse it; use Clear Configuration before uninstalling to remove values.
+  reimporting the same source can reuse it; the uninstall dialog can also delete configuration,
+  passwords and plugin data together.
   A different source has a different action identity; do not rely on it inheriting saved values.
 - Configuration storage does not access Keychain or request a system password. Users upgrading
   from the old Keychain implementation must enter and save their password fields once again;
@@ -272,7 +294,11 @@ placement, order, enabled state and the declared configuration values in the set
 
 Local folders are installed as snapshots and do not participate in Git update checks. Moving
 the original folder does not affect installed actions. Importing the same source again is
-rejected; uninstall its existing pack before importing a replacement.
+rejected. In developer mode, use **Reload Local Pack…** to review and apply a new source snapshot,
+or uninstall and import a replacement. Updates include manifest and UI resource differences.
+Adding capabilities disables affected entries. Existing sessions/tasks end before files are
+replaced. Uninstall retains data by default, with an option to remove configuration, passwords
+and pack data together.
 
 “Check for updates” compares the remote `HEAD` SHA to the installed one. An update clones the
 new version, shows a per-file diff (added / removed / modified) and any new actions (which

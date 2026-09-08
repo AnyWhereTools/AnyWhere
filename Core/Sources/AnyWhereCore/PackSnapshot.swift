@@ -27,11 +27,19 @@ public struct PackSnapshot: Sendable {
         }
         var scripts: [String: String] = [:]
         for action in manifest.actions {
-            guard PackInspector.resolvesInside(directory: directory, relativePath: action.script) else {
-                throw ReadError.invalidManifest("script path escapes pack: \(action.script)")
+            if let ui = action.ui {
+                do {
+                    let url = try PluginResourceResolver.resolve(root: directory, relativePath: ui.entry)
+                    guard ["html", "htm"].contains(url.pathExtension.lowercased()) else { throw ReadError.invalidManifest("UI entry must be HTML") }
+                    _ = try String(contentsOf: url, encoding: .utf8)
+                } catch { throw ReadError.invalidManifest("UI entry is missing, invalid or outside pack") }
             }
-            guard let text = try? String(contentsOf: directory.appendingPathComponent(action.script), encoding: .utf8) else {
-                throw ReadError.invalidManifest("script is missing or unreadable: \(action.script)")
+            guard let script = action.script else { continue }
+            guard PackInspector.resolvesInside(directory: directory, relativePath: script) else {
+                throw ReadError.invalidManifest("script path escapes pack: \(script)")
+            }
+            guard let text = try? String(contentsOf: directory.appendingPathComponent(script), encoding: .utf8) else {
+                throw ReadError.invalidManifest("script is missing or unreadable: \(script)")
             }
             scripts[action.id] = text
         }

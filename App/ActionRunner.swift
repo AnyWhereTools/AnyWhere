@@ -3,6 +3,40 @@ import AnyWhereCore
 
 final class ActionRunner: ActionRunning {
     private static let queue = DispatchQueue(label: "com.anywhere.action-runner", qos: .userInitiated)
+    @MainActor private static var launcherTasks: [UUID: PluginTask] = [:]
+    @MainActor @discardableResult static func cancelLauncherTasks(actionIDs: Set<UUID>? = nil) -> Bool {
+        let tasks = launcherTasks.filter { actionIDs?.contains($0.key) ?? true }.map(\.value)
+        for task in tasks { task.cancel() }
+        return tasks.reduce(true) { $1.waitUntilFinished() && $0 }
+    }
+
+    @MainActor func runLauncher(entry: PluginLauncherEntry, invocation: PluginInvocation) {
+        guard Self.launcherTasks[entry.id] == nil else {
+            Notifier.showFailure(entry.definition.title, String(localized: "plugins.taskBusy")); return
+        }
+        let task = PluginTask(), extraEnv = Self.contractEnv()
+        Self.launcherTasks[entry.id] = task
+        DispatchQueue.global(qos: .userInitiated).async {
+            let outcome: ExecutionOutcome
+            do {
+                guard let path = entry.definition.script else { throw PluginError(.failed, "No script declared.") }
+                let script = try PluginResourceResolver.resolve(root: entry.directory, relativePath: path)
+                let fields = entry.definition.settings
+                let values = try PackConfiguration.store().load(actionID: entry.id, fields: fields)
+                let env = extraEnv.merging(try PackSettings.environment(fields: fields, values: values)) { _, new in new }
+                let secrets = fields.filter { $0.type == .password }.compactMap { values[$0.key] }
+                let result = task.run(script: script, directory: entry.directory, invocation: invocation, input: .null,
+                                      environment: env, secrets: secrets, timeout: TimeInterval(entry.definition.timeoutSeconds)) { _, _ in }
+                if let error = result.error { outcome = .failure(message: error.message + "\n" + result.stderr) }
+                else { outcome = .success(summary: result.stdout.split(separator: "\n").first.map(String.init)) }
+            } catch { outcome = .failure(message: error.localizedDescription) }
+            Task { @MainActor in
+                Self.launcherTasks[entry.id] = nil
+                ExecutionLog.shared.append(title: entry.definition.title, outcome: outcome)
+                if case .failure(let message) = outcome { Notifier.showFailure(entry.definition.title, message) }
+            }
+        }
+    }
 
     /// 执行环境契约的非选中相关部分(模板/数据目录 + 用户选的终端/编辑器)。
     /// 抽出来供真实执行与编辑器「试运行」共用,保证两者环境一致、不漂移。
@@ -60,6 +94,8 @@ final class ActionRunner: ActionRunning {
     private static func execute(kind: MenuAction.Kind, variant: String?, paths: [String],
                                 scriptBase: URL, cwd: URL?, extraEnv: [String: String], secrets: [String]) -> ExecutionOutcome {
         switch kind {
+        case .openPluginUI:
+            return .failure(message: "Open this plugin from its UI entry.")
         case .runScript(let spec):
             let r = ShellRunner.runScript(spec, paths: paths, variant: variant,
                                           scriptBase: scriptBase, cwd: cwd, extraEnv: extraEnv)

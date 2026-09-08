@@ -121,6 +121,7 @@ public struct MenuAction: Codable, Identifiable, Equatable, Sendable {
     public enum Kind: Codable, Equatable, Sendable {
         case runScript(ScriptSpec)
         case openWith(appBundleID: String)
+        case openPluginUI
     }
     public var id: UUID
     public var title: String
@@ -149,7 +150,7 @@ public struct MenuAction: Codable, Identifiable, Equatable, Sendable {
 }
 
 public struct MenuConfig: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
     public var schemaVersion: Int
     public var actions: [MenuAction]
     public init(schemaVersion: Int, actions: [MenuAction]) {

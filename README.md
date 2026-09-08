@@ -57,7 +57,18 @@ filenames in Finder. Items are grouped by how much AnyWhere can control them:
 Pick your default terminal and editor in **General**; the “Open in Terminal / Editor” presets
 honor your choice via injected env vars — no script changes needed.
 
-### Extension packs: Git or local import
+### Plugin search and custom UI
+
+Press `Control+Option+Space`, search an installed plugin by title or alias, and press Return
+to open its HTML/CSS/JS page inside the same window. Change or disable the shortcut in General,
+or open search from the menu bar. Pack details provide independent **Search** and **Context Menu**
+switches; both start disabled after import.
+
+Pages can persist pack data, write to the clipboard and run cancellable scripts or bundled
+Go/Rust backends without a Node runtime. See the [UI guide](docs/plugin-ui.md) and importable
+[Text Toolbox](examples/ui-tool-pack/README.md). These features require schema 4; versions 1–3 remain supported.
+
+### Importing packs
 
 An extension pack is a folder with a root `manifest.json` and its scripts. In **Extension Packs
 → Import**, paste a Git URL / `owner/repo`, or choose **Choose Local Folder…**; a local pack
@@ -66,7 +77,8 @@ additional files (including bundled CLIs), and adds its actions **disabled**.
 
 Local imports preserve executable permissions and install a snapshot: moving or editing the
 source folder does not change the installed copy. Local packs do not check Git updates. To
-replace one, uninstall it and import the updated folder again; duplicate imports are rejected.
+replace one, use **Reload Local Pack…** in developer mode, or uninstall and import again;
+duplicate imports are rejected.
 
 ### Plugin configuration: save once, reuse on every run
 
@@ -79,7 +91,8 @@ App data stays in `~/Library/Application Support/AnyWhere/`. Passwords are encry
 with AES-256-GCM; ordinary settings remain local JSON files. Configuration reads and writes
 do not access Keychain or ask for a system password.
 Updates retain values for stable action IDs and field keys. Uninstalling retains configuration
-for reimport from the same source; clear it before uninstalling if you want it removed.
+for reimport from the same source; optionally delete configuration, passwords and plugin data
+together in the uninstall dialog. Search-only actions have configuration forms in pack details.
 
 **Upgrading from Keychain storage:** enter and save the password fields once again. The app
 does not read or delete old Keychain entries. Back up the entire `PrivateData/` directory,

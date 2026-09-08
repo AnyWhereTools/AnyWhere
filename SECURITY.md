@@ -1,5 +1,12 @@
 # Security
 
+Custom UI uses a nonpersistent WKWebView with pack-local resources and a CSP blocking direct
+network, remote scripts and iframes. Only the current main page can send bounded bridge
+requests; the host supplies plugin identity. Clipboard and task execution require declared
+capabilities. Passwords are not returned to pages. Pack storage is limited to 5 MiB; task
+requests use private JSON files and output is limited to 4 MiB, with cross-chunk password
+redaction. See the [UI contract](docs/plugin-ui.md). This is not an OS sandbox for scripts or binaries.
+
 English · [简体中文](SECURITY.zh.md) · [Back to home](README.md)
 
 ## Reporting a vulnerability

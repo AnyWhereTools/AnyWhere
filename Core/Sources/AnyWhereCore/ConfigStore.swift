@@ -27,6 +27,10 @@ public final class ConfigStore {
     }
 
     public func save(_ config: MenuConfig) throws {
+        var config = config
+        if config.actions.contains(where: { $0.kind == .openPluginUI }) {
+            config.schemaVersion = max(2, config.schemaVersion)
+        }
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(),
                                                 withIntermediateDirectories: true)
         let encoder = JSONEncoder()

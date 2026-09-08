@@ -35,6 +35,17 @@ public final class LocalEncryptedSecretStore: PackSecretStore {
         var values = try loadValues()
         if value == nil && values[account] == nil { return }
         values[account] = value
+        try saveValues(values)
+    }
+
+    public func removeAccounts(prefix: String) throws {
+        Self.lock.lock(); defer { Self.lock.unlock() }
+        let values = try loadValues()
+        let kept = values.filter { !$0.key.hasPrefix(prefix) }
+        if kept.count != values.count { try saveValues(kept) }
+    }
+
+    private func saveValues(_ values: [String: String]) throws {
         _ = try prepareDirectory(create: true)
         let key = try encryptionKey(create: true)
         let sealed = try AES.GCM.seal(JSONEncoder().encode(values), using: key,

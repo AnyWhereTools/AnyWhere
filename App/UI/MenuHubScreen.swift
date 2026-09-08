@@ -58,7 +58,7 @@ struct ScreenMenuHub: View {
 
     /// 顶层 + 子菜单,按 sortOrder 排序的自有动作。
     private var sortedActions: [MenuAction] {
-        state.config.actions.sorted { $0.sortOrder < $1.sortOrder }
+        state.config.actions.filter { state.packManager.appearsInContextMenu($0) }.sorted { $0.sortOrder < $1.sortOrder }
     }
 
     var body: some View {
@@ -562,6 +562,7 @@ struct ScreenMenuHub: View {
     }
 
     private func setOwnEnabled(_ value: Bool, _ action: MenuAction) {
+        if action.packID != nil { state.packManager.setActionEnabled(value, actionID: action.id); return }
         state.mutateConfig { config in
             guard let idx = config.actions.firstIndex(where: { $0.id == action.id }) else { return }
             config.actions[idx].isEnabled = value

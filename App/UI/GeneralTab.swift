@@ -22,6 +22,7 @@ struct GeneralTab: View {
         ZStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    AWGroup(header: String(localized: "plugins.title")) { PluginShortcutSettings() }
                     // 登录时启动(无 header)。
                     AWGroup {
                         AWRow {

@@ -60,11 +60,22 @@ struct PackUpdate {
     }
 }
 
+struct PluginLauncherEntry: Identifiable {
+    let id: UUID
+    let action: MenuAction
+    let definition: PackAction
+    let directory: URL
+}
+
 // MARK: - PackManager
 
 @MainActor
 final class PackManager: ObservableObject {
     @Published private(set) var packs: [InstalledPack] = []
+    let preferences = PluginPreferencesStore(directory: AppPaths.configDirectory())
+    static func dataDirectory(_ key: String) -> URL {
+        AppPaths.configDirectory().appendingPathComponent("PluginData", isDirectory: true).appendingPathComponent(key, isDirectory: true)
+    }
 
     /// 注入点:默认用全局 AppState 单例,测试可替换。
     /// 默认参数避免引用 @MainActor 的 AppState.shared(默认参数在非隔离上下文求值);
@@ -117,10 +128,11 @@ final class PackManager: ObservableObject {
             return InstalledPack(
                 key: rec.key, manifest: rec.manifest, repoURL: rec.repoURL,
                 repo: rec.repo, commitSHA: rec.commitSHA,
-                enabledCount: mine.filter(\.isEnabled).count,
+                enabledCount: mine.filter { $0.isEnabled || (try? preferences.isEnabled(actionID: $0.id)) == true }.count,
                 totalCount: mine.count, isLocal: rec.isLocal == true)
         }
         .sorted { $0.manifest.name.localizedCaseInsensitiveCompare($1.manifest.name) == .orderedAscending }
+        PluginLauncherController.shared.validateSession(using: self)
     }
 
     // MARK: - Import: step 1 — clone (NEVER executes scripts)
@@ -144,7 +156,7 @@ final class PackManager: ObservableObject {
             let (manifest, scripts) = try Self.readManifestAndScripts(in: tempDir)
             // 安全网:列出 manifest 之外的文件(脚本可经相对路径 source 它们),逼审查者看见隐藏的兄弟文件。
             let extras = PackInspector.undeclaredFiles(inDirectory: tempDir,
-                                                       declared: Set(manifest.actions.map(\.script)))
+                                                       declared: Set(manifest.actions.compactMap(\.script)))
             let sha = await Self.shortHEAD(in: tempDir)
             return ClonedPack(tempDir: tempDir, key: key, manifest: manifest,
                               repoURL: repoURL, repo: repo, commitSHA: sha,
@@ -174,7 +186,7 @@ final class PackManager: ObservableObject {
             throw Self.mapReadError(error)
         }
         let extras = PackInspector.undeclaredFiles(inDirectory: snapshot.directory,
-                                                  declared: Set(snapshot.manifest.actions.map(\.script)))
+                                                  declared: Set(snapshot.manifest.actions.compactMap(\.script)))
         return ClonedPack(tempDir: snapshot.directory, key: key, manifest: snapshot.manifest,
                           repoURL: source.absoluteString, repo: source.lastPathComponent,
                           commitSHA: "", scripts: snapshot.scripts, extraFiles: extras, isLocal: true)
@@ -204,6 +216,8 @@ final class PackManager: ObservableObject {
                             packDir: dest, sortOrder: baseOrder + offset)
         }
         config.actions.append(contentsOf: newActions)
+        try preferences.rememberActions(packKey: cloned.key, ids: Set(newActions.map(\.id)))
+        for action in newActions { try preferences.setEnabled(false, actionID: action.id) }
 
         // Persist installed.json BEFORE update() so reload() sees the record.
         var records = Self.loadInstalled().filter { $0.key != cloned.key }
@@ -227,19 +241,77 @@ final class PackManager: ObservableObject {
         return definition.settings
     }
 
+    func launcherEntries() -> [PluginLauncherEntry] {
+        packs.flatMap { (pack: InstalledPack) -> [PluginLauncherEntry] in
+            let directory = Self.packDir(pack.key)
+            return pack.manifest.actions.compactMap { definition in
+                guard definition.launcher != nil,
+                      let action = appState().config.actions.first(where: {
+                          $0.id == Self.actionUUID(packKey: pack.key, packActionID: definition.id)
+                      }), (try? preferences.isEnabled(actionID: action.id)) == true else { return nil }
+                return PluginLauncherEntry(id: action.id, action: action, definition: definition, directory: directory)
+            }
+        }
+    }
+
+    func launcherEntry(actionID: UUID) -> PluginLauncherEntry? {
+        for pack in packs {
+            guard let definition = pack.manifest.actions.first(where: {
+                Self.actionUUID(packKey: pack.key, packActionID: $0.id) == actionID
+            }),
+                  let action = appState().config.actions.first(where: { $0.id == actionID }) else { continue }
+            return PluginLauncherEntry(id: actionID, action: action, definition: definition,
+                                       directory: Self.packDir(pack.key))
+        }
+        return nil
+    }
+
+    func appearsInContextMenu(_ action: MenuAction) -> Bool {
+        guard let key = action.packID,
+              let pack = packs.first(where: { $0.key == key }),
+              let definition = pack.manifest.actions.first(where: {
+                  Self.actionUUID(packKey: key, packActionID: $0.id) == action.id
+              }) else { return true }
+        return definition.contextMenu
+    }
+
     func setActionEnabled(_ enabled: Bool, actionID: UUID) {
         var config = appState().config
         guard let idx = config.actions.firstIndex(where: { $0.id == actionID }),
               config.actions[idx].packID != nil else { return }
         guard config.actions[idx].isEnabled != enabled else { return }
+        if !enabled, PluginLauncherController.shared.session?.entry.id == actionID,
+           PluginLauncherController.shared.session?.invocation.source == .finder {
+            _ = PluginLauncherController.shared.endSession(packKey: config.actions[idx].packID!)
+        }
         config.actions[idx].isEnabled = enabled
         appState().update(config)
         reload()
     }
 
+    func setLauncherEnabled(_ enabled: Bool, actionID: UUID) throws {
+        try preferences.setEnabled(enabled, actionID: actionID)
+        if !enabled, let entry = launcherEntry(actionID: actionID), PluginLauncherController.shared.session?.entry.id == actionID,
+           PluginLauncherController.shared.session?.invocation.source == .launcher {
+            _ = PluginLauncherController.shared.endSession(packKey: entry.action.packID!)
+        }
+        reload()
+    }
+
     // MARK: - Uninstall
 
-    func uninstall(_ key: String) throws {
+    func uninstall(_ key: String, clearData: Bool = false) throws {
+        guard PluginLauncherController.shared.endSession(packKey: key) else { throw PluginError(.busy, String(localized: "plugins.taskStopFailed")) }
+        let currentIDs = Set(appState().config.actions.filter { $0.packID == key }.map(\.id))
+        guard ActionRunner.cancelLauncherTasks(actionIDs: currentIDs) else { throw PluginError(.busy, String(localized: "plugins.taskStopFailed")) }
+        try preferences.rememberActions(packKey: key, ids: currentIDs)
+        if clearData {
+            for id in try preferences.knownActions(packKey: key) { try PackConfiguration.store().remove(actionID: id) }
+            try PluginDataStore(directory: Self.dataDirectory(key)).removeAll()
+        }
+        // Keep known IDs when retaining data, so a later uninstall can clear removed actions too.
+        if clearData { try preferences.removePack(packKey: key) }
+        else { for id in currentIDs { try preferences.setEnabled(false, actionID: id) } }
         var config = appState().config
         config.actions.removeAll { $0.packID == key }
         appState().update(config)
@@ -275,7 +347,14 @@ final class PackManager: ObservableObject {
         guard let rec = Self.loadInstalled().first(where: { $0.key == key }) else {
             throw PackError.packNotInstalled(key)
         }
-        guard rec.isLocal != true else { throw PackError.notAGitRepo }
+        if rec.isLocal == true {
+            guard let source = URL(string: rec.repoURL), source.isFileURL else { throw PackError.notAGitRepo }
+            let snapshot = try await Task.detached { try PackSnapshot.copyLocalDirectory(source) }.value
+            return PackUpdate(key: key, tempDir: snapshot.directory, newManifest: snapshot.manifest, newSHA: "",
+                              newRepoURL: rec.repoURL, newRepo: rec.repo,
+                              diffsByFile: Self.diffScripts(localDir: Self.packDir(key), localManifest: rec.manifest,
+                                                           newDir: snapshot.directory, newManifest: snapshot.manifest), newScripts: snapshot.scripts)
+        }
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("anywhere-pack-update-\(UUID().uuidString)", isDirectory: true)
         let clone = await Self.git(["clone", "--depth", "1", rec.repoURL, tempDir.path], cwd: nil)
@@ -301,8 +380,14 @@ final class PackManager: ObservableObject {
     // MARK: - Update: apply (preserve enabled state by PackAction.id)
 
     func applyUpdate(_ key: String, _ update: PackUpdate) throws {
+        guard PluginLauncherController.shared.endSession(packKey: key, confirm: true) else {
+            throw PluginError(.cancelled, String(localized: "plugins.updateCancelled"))
+        }
+        let currentIDs = Set(appState().config.actions.filter { $0.packID == key }.map(\.id))
+        guard ActionRunner.cancelLauncherTasks(actionIDs: currentIDs) else { throw PluginError(.busy, String(localized: "plugins.taskStopFailed")) }
         let fm = FileManager.default
         let dest = Self.packDir(key)
+        let oldManifest = packs.first { $0.key == key }?.manifest
 
         // Preserve which pack-action-ids were enabled (match by stable PackAction.id,
         // encoded into the deterministic UUID).
@@ -316,8 +401,10 @@ final class PackManager: ObservableObject {
 
         // Swap working tree.
         try fm.createDirectory(at: Self.packsRoot, withIntermediateDirectories: true)
-        if fm.fileExists(atPath: dest.path) { try fm.removeItem(at: dest) }
-        try fm.moveItem(at: update.tempDir, to: dest)
+        let backup = Self.packsRoot.appendingPathComponent(".backup-\(UUID())")
+        try fm.moveItem(at: dest, to: backup)
+        do { try fm.moveItem(at: update.tempDir, to: dest) }
+        catch { try fm.moveItem(at: backup, to: dest); throw error }
 
         // Rebuild this pack's actions from the new manifest:
         // - existing PackAction.id keeps its enabled state, new ones default disabled,
@@ -328,15 +415,30 @@ final class PackManager: ObservableObject {
             var a = Self.menuAction(from: pa, packKey: key, repo: update.newRepo,
                                     packDir: dest, sortOrder: baseOrder + offset)
             a.isEnabled = enabledByPackActionID[pa.id] ?? false
+            let old = oldManifest?.actions.first { $0.id == pa.id }
+            if !Set(pa.capabilities).isSubset(of: Set(old?.capabilities ?? [])) { a.isEnabled = false }
             return a
         }
         config.actions.append(contentsOf: newActions)
+        do {
+            try preferences.rememberActions(packKey: key, ids: currentIDs.union(newActions.map(\.id)))
+            for definition in update.newManifest.actions {
+                let old = oldManifest?.actions.first { $0.id == definition.id }
+                if old == nil || !Set(definition.capabilities).isSubset(of: Set(old?.capabilities ?? [])) {
+                    try preferences.setEnabled(false, actionID: Self.actionUUID(packKey: key, packActionID: definition.id))
+                }
+            }
 
         // Update installed.json (new SHA + manifest snapshot).
         var records = Self.loadInstalled().filter { $0.key != key }
         records.append(InstalledRecord(key: key, repoURL: update.newRepoURL, repo: update.newRepo,
-                                       commitSHA: update.newSHA, manifest: update.newManifest))
+                                       commitSHA: update.newSHA, manifest: update.newManifest,
+                                       isLocal: packs.first { $0.key == key }?.isLocal == true ? true : nil))
         try Self.saveInstalled(records)
+        } catch {
+            try fm.removeItem(at: dest); try fm.moveItem(at: backup, to: dest); throw error
+        }
+        try? fm.removeItem(at: backup)
 
         appState().update(config)
         reload()
@@ -352,7 +454,7 @@ final class PackManager: ObservableObject {
     /// Deterministic UUID for a pack action so enabled-state survives updates and
     /// snapshot rebuilds: derived from packKey + PackAction.id.
     static func actionUUID(packKey: String, packActionID: String) -> UUID {
-        UUID.deterministic("pack.\(packKey).\(packActionID)")
+        PluginActionIdentity.uuid(packKey: packKey, actionID: packActionID)
     }
 
     /// Recover a MenuAction's originating PackAction.id by matching its deterministic UUID.
@@ -367,13 +469,20 @@ final class PackManager: ObservableObject {
     private static func menuAction(from pa: PackAction, packKey: String, repo: String,
                                    packDir: URL, sortOrder: Int) -> MenuAction {
         // Absolute scriptPath into the installed pack dir (validate() already rejected `..`).
-        let scriptAbs = packDir.appendingPathComponent(pa.script).path
-        let spec = ScriptSpec(scriptPath: scriptAbs, inlineSource: nil, timeoutSeconds: pa.timeoutSeconds)
+        let kind: MenuAction.Kind
+        if pa.ui != nil {
+            kind = .openPluginUI
+        } else if let script = pa.script {
+            let scriptAbs = packDir.appendingPathComponent(script).path
+            kind = .runScript(ScriptSpec(scriptPath: scriptAbs, inlineSource: nil, timeoutSeconds: pa.timeoutSeconds))
+        } else {
+            kind = .openPluginUI
+        }
         return MenuAction(
             id: actionUUID(packKey: packKey, packActionID: pa.id),
             title: pa.title,
             icon: .symbol(pa.icon),
-            kind: .runScript(spec),
+            kind: kind,
             matching: pa.matching,
             placement: pa.placement,
             variants: pa.variants,
@@ -405,15 +514,26 @@ final class PackManager: ObservableObject {
     private static func diffScripts(localDir: URL, localManifest: PackManifest,
                                     newDir: URL, newManifest: PackManifest) -> [PackUpdate.FileDiff] {
         // Union of script paths declared by old & new manifests.
-        let oldPaths = Set(localManifest.actions.map(\.script))
-        let newPaths = Set(newManifest.actions.map(\.script))
+        func paths(_ dir: URL, _ manifest: PackManifest) -> Set<String> {
+            Set(manifest.actions.compactMap(\.script))
+                .union(PackInspector.undeclaredFiles(inDirectory: dir, declared: []).map(\.relativePath))
+                .union(["manifest.json"])
+        }
+        let oldPaths = paths(localDir, localManifest)
+        let newPaths = paths(newDir, newManifest)
         let allPaths = oldPaths.union(newPaths).sorted()
         return allPaths.map { rel in
             let oldText = oldPaths.contains(rel)
                 ? try? String(contentsOf: localDir.appendingPathComponent(rel), encoding: .utf8) : nil
             let newText = newPaths.contains(rel)
                 ? try? String(contentsOf: newDir.appendingPathComponent(rel), encoding: .utf8) : nil
-            return PackUpdate.FileDiff(path: rel, oldText: oldText, newText: newText)
+            func reviewed(_ text: String?, _ root: URL, _ exists: Bool) -> String? {
+                guard exists else { return nil }
+                if let text { return text }
+                guard let file = try? PluginResourceResolver.resolve(root: root, relativePath: rel), let data = try? Data(contentsOf: file) else { return "[unreadable resource]" }
+                return "[binary] SHA256: " + SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            }
+            return PackUpdate.FileDiff(path: rel, oldText: reviewed(oldText, localDir, oldPaths.contains(rel)), newText: reviewed(newText, newDir, newPaths.contains(rel)))
         }
     }
 

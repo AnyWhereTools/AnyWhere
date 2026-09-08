@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>文本工具</title>
+  <style>
+    body { margin: 0; padding: 24px; font: 14px -apple-system, sans-serif; color: CanvasText; background: Canvas; }
+    textarea { box-sizing: border-box; width: 100%; min-height: 180px; padding: 12px; resize: vertical; }
+    button { margin-top: 12px; margin-right: 8px; padding: 7px 14px; }
+    #context { color: #777; font-size: 12px; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <div id="context">正在读取调用上下文…</div>
+  <label for="text">文本</label>
+  <textarea id="text" placeholder="输入文本"></textarea>
+  <div>
+    <button id="upper">转为大写</button>
+    <button id="copy">复制结果</button>
+    <button id="save">保存草稿</button>
+    <button id="run">运行后端演示</button>
+    <button id="cancel" disabled>取消任务</button>
+  </div>
+  <pre id="output" role="status" aria-live="polite"></pre>
+  <script>
+    const input = document.querySelector('#text');
+    const output = document.querySelector('#output');
+    const run = document.querySelector('#run'), cancel = document.querySelector('#cancel');
+    let task;
+    anywhere.onEnter(async invocation => {
+      input.value = invocation.argument || await anywhere.storage.get('draft') || '';
+      document.querySelector('#context').textContent = `入口：${invocation.source}`;
+    });
+    document.querySelector('#upper').onclick = () => input.value = input.value.toUpperCase();
+    document.querySelector('#copy').onclick = async () => {
+      try { await anywhere.clipboard.writeText(input.value); output.textContent = '已复制'; }
+      catch (e) { output.textContent = e.message; }
+    };
+    document.querySelector('#save').onclick = async () => {
+      try { await anywhere.storage.set('draft', input.value); output.textContent = '已保存'; }
+      catch (e) { output.textContent = e.message; }
+    };
+    run.onclick = async () => {
+      run.disabled = true; output.textContent = '';
+      try {
+        task = await anywhere.tasks.run({text: input.value}); cancel.disabled = false;
+        task.onOutput(event => output.textContent += event.text);
+        const result = await task.result;
+        output.textContent += result.error ? `\n${result.error.code}: ${result.error.message}` : `\n退出码：${result.exitCode}`;
+      } catch (e) { output.textContent += e.message; }
+      finally { task = null; run.disabled = false; cancel.disabled = true; }
+    };
+    cancel.onclick = () => task?.cancel().catch(e => output.textContent += e.message);
+  </script>
+</body>
+</html>

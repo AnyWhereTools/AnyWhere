@@ -6,14 +6,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static let extensionBundleID = "com.anywhere.app.FinderExtension"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         Notifier.requestAuthorizationOnce()
         Task { @MainActor in AppState.shared.start() }
+        Task { @MainActor in PluginLauncherController.shared.start() }
 
         let onboardingDone = UserDefaults.standard.bool(forKey: "onboardingDone")
         let enabled = Self.extensionEnabled()
         if !onboardingDone || !enabled {
             Task { @MainActor in OnboardingWindowController.show() }
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        PluginLauncherController.shared.stop()
+        ActionRunner.cancelLauncherTasks()
     }
 
     /// 扩展是否启用。FIFinderSyncController.isExtensionEnabled 在开发/ad-hoc 签名版上不可靠

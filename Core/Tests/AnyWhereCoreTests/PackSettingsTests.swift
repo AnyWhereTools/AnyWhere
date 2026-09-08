@@ -6,6 +6,7 @@ final class PackSettingsTests: XCTestCase {
         var values: [String: String] = [:]
         func read(account: String) throws -> String? { values[account] }
         func write(_ value: String?, account: String) throws { values[account] = value }
+        func removeAccounts(prefix: String) throws { values = values.filter { !$0.key.hasPrefix(prefix) } }
     }
     private var directory: URL!
     private var secrets: Secrets!

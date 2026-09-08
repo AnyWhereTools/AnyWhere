@@ -1,6 +1,32 @@
 # 插件搜索与自定义 UI 实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task in this session. Steps use checkbox (`- [ ]`) syntax for tracking. Inline Execution is selected because the manifest, action registry, session, and Bridge share changing interfaces; no subagent or parallel implementation is authorized by this plan.
+> 本轮按用户后续指定的 `workflow` 串行执行，不启动其他编排流程。下方原始步骤保留作设计依据；实际文件与验证进度见下表，不将尚未执行的预期失败测试或分步提交勾选为完成。
+
+## 当前实施进度（2026-09-08）
+
+| 任务 | 实现与证据 |
+|---|---|
+| 1 清单与契约 | 已实现版本 4、UI API 1、纯 UI、资源边界；定向测试已通过 |
+| 2 注册与入口 | 使用现有动作记录，Finder 快照和右键预览过滤纯搜索项；搜索开关单独持久化 |
+| 3 搜索 | 标题/别名匹配、最长前缀、原文参数和最多十项最近使用；定向测试通过 |
+| 4 数据 | 插件 KV、原子写入、配额、动作配置与密码完整删除；定向测试通过 |
+| 5 任务 | `PluginTask.swift` 管理进程组、超时、取消、输出和跨块密码遮蔽 |
+| 6–7 会话与 WebKit | 收口于 `PluginSession.swift`，使用原生 Promise 回复与自定义资源 scheme；真实 WKWebView 测试通过 |
+| 8 搜索窗口 | `PluginLauncher.swift` 提供 Carbon 热键、原生输入、单窗口和会话切换；交互验收待完成 |
+| 9 包生命周期与示例 | 独立开关、审阅资源变化、本地重载、更新停任务、可选清理；示例提供纯 UI 与 UI+后端两个功能 |
+| 10 文档与验证 | 中英 SDK 文档、规范、README、类型声明已补全；177 项 Core 测试、预设回归、Debug 构建与 WebView 集成测试通过；桌面交互待验收 |
+
+实现沿用现有配置与包事实来源，未建立额外的纯状态机、Host 接口或重复动作注册表。任务与输出过滤共用一个文件，网页 SDK 内嵌宿主并附独立类型声明。采用系统标题栏保留原生关闭、缩放和辅助功能。上述内部组织调整不改变批准的产品边界。
+
+### 最终验证证据
+
+- 2026-09-08，macOS arm64，Debug，ad-hoc 签名，原生 Xcode 工具链；当前工具列表无 IDE `build_project`。
+- `swift test`：177 项通过。`make test-presets`：新建文件编号及剪切/粘贴回归通过。
+- `xcodebuild -project AnyWhere.xcodeproj -scheme AnyWhere -configuration Debug -destination 'platform=macOS' -derivedDataPath /tmp/anywhere-plugin-derived CODE_SIGN_IDENTITY=- build test`：构建及 AppTests 通过。
+- AppTests 使用真实 WKWebView，验证上下文、标量 JSON 存储、未授权剪贴板、网页联网阻断、消息超限，以及真实后端的输出、退出结果和忙碌错误。
+- 已核对新增中英文文案、JSON、文档链接及 `git diff --check`。验证时完整文件树 SHA-256：`f97c7fa7af26571fd20b1a8ea5c3b6cc4715b1fb28ce99d75dae4f8e23184e1c`（随后仅更新此进度文档）。
+- 日志位于 `/tmp/anywhere-plugin-final-core.log`、`/tmp/anywhere-plugin-presets.log`、`/tmp/anywhere-plugin-final-app.log`，完整文件清单位于 `/tmp/anywhere-plugin-verified-tree.json`。
+- 尚未把构建通过当成桌面验收：当前 CUA 无法连接尚未显示窗口的菜单栏应用，已请求用户从新版本菜单栏打开插件搜索。快捷键实体输入、中文输入法、多屏、Finder 实际菜单和导入/更新/卸载交互尚未全部验证。未使用真实私钥或用户日志。
 
 **Goal:** 提供快捷键唤起的已安装插件搜索，在同一窗口展开自定义页面，并与现有 Finder 动作共享插件身份、配置和可选后端任务。
 

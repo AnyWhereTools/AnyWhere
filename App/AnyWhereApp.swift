@@ -33,6 +33,9 @@ struct AnyWhereApp: App {
                 openWindow(id: "settings")
                 NSApp.activate(ignoringOtherApps: true)
             }
+            Button(String(localized: "plugins.openSearch")) {
+                PluginLauncherController.shared.show()
+            }
             Button(String(localized: "menubar.recentRuns")) {
                 openWindow(id: "log")
                 NSApp.activate(ignoringOtherApps: true)

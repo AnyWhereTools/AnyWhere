@@ -7,6 +7,11 @@ pure-logic Swift package at its core.
 
 ## Development setup
 
+For custom plugins, start with [Text Toolbox](examples/ui-tool-pack/README.md) and the
+[UI guide](docs/plugin-ui.md). After `make gen`, run host tests with
+`xcodebuild -project AnyWhere.xcodeproj -scheme AnyWhere -destination 'platform=macOS' test`.
+Core and preset checks remain `make test` and `make test-presets`.
+
 Requirements: macOS 13+, Xcode 15+ (String Catalogs), Homebrew (for `xcodegen`).
 
 ```bash

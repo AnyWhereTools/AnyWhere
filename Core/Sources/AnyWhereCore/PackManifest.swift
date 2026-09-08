@@ -9,7 +9,7 @@ import Foundation
 /// - `decode` 只解析不校验;`validate()` 做语义校验(schemaVersion 不超前、name/actions 非空、
 ///   每个 action 字段合法、脚本路径限定仓库内相对路径)。
 public struct PackManifest: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
 
     public var schemaVersion: Int
     public var name: String          // 包名(显示)
@@ -17,22 +17,24 @@ public struct PackManifest: Codable, Equatable, Sendable {
     public var description: String?
     public var icon: String          // SF Symbol 名,默认 shippingbox
     public var actions: [PackAction]
+    public var uiApiVersion: Int?
 
     public init(schemaVersion: Int, name: String, author: String? = nil,
                 description: String? = nil, icon: String = "shippingbox",
-                actions: [PackAction]) {
+                actions: [PackAction], uiApiVersion: Int? = nil) {
         self.schemaVersion = schemaVersion
         self.name = name
         self.author = author
         self.description = description
         self.icon = icon
         self.actions = actions
+        self.uiApiVersion = uiApiVersion
     }
 
     // MARK: Codable (custom: fill defaults, ignore unknown keys)
 
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, name, author, description, icon, actions
+        case schemaVersion, name, author, description, icon, actions, uiApiVersion
     }
 
     public init(from decoder: Decoder) throws {
@@ -43,6 +45,7 @@ public struct PackManifest: Codable, Equatable, Sendable {
         self.description = try c.decodeIfPresent(String.self, forKey: .description)
         self.icon = try c.decodeIfPresent(String.self, forKey: .icon) ?? "shippingbox"
         self.actions = try c.decodeIfPresent([PackAction].self, forKey: .actions) ?? []
+        self.uiApiVersion = try c.decodeIfPresent(Int.self, forKey: .uiApiVersion)
     }
 
     // MARK: Decode entry point
@@ -71,6 +74,7 @@ public struct PackManifest: Codable, Equatable, Sendable {
         case invalidExtension(id: String, value: String)
         case invalidFilenamePattern(id: String)
         case fileFilterOnContainer(id: String)
+        case invalidUI(id: String)
     }
 
     public func validate() throws {
@@ -90,8 +94,29 @@ public struct PackManifest: Codable, Equatable, Sendable {
             if action.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 throw ValidationError.emptyActionTitle(id: id)
             }
-            guard Self.isSafeRelativeScriptPath(action.script) else {
-                throw ValidationError.invalidScriptPath(id: id, path: action.script)
+            if let script = action.script {
+                guard Self.isSafeRelativeScriptPath(script) else {
+                    throw ValidationError.invalidScriptPath(id: id, path: script)
+                }
+            } else if action.ui == nil {
+                throw ValidationError.invalidScriptPath(id: id, path: "")
+            }
+            if action.ui != nil || action.launcher != nil || !action.contextMenu || !action.capabilities.isEmpty || uiApiVersion != nil {
+                guard schemaVersion >= 4 else { throw ValidationError.invalidUI(id: id) }
+            }
+            if let ui = action.ui {
+                guard uiApiVersion == 1, Self.isSafeRelativeScriptPath(ui.entry),
+                      ui.height.map({ $0 > 0 }) ?? true else { throw ValidationError.invalidUI(id: id) }
+            }
+            guard (uiApiVersion == nil || uiApiVersion == 1),
+                  action.contextMenu || action.launcher != nil,
+                  !action.capabilities.contains(.runTask) || action.script != nil else {
+                throw ValidationError.invalidUI(id: id)
+            }
+            if let keywords = action.launcher?.keywords {
+                let normalized = keywords.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+                guard normalized.allSatisfy({ !$0.isEmpty && !$0.contains("\0") }),
+                      Set(normalized).count == keywords.count else { throw ValidationError.invalidUI(id: id) }
             }
             try PackSettings.validate(action.settings)
             if !action.extensions.isEmpty || action.filenamePattern != nil {
@@ -113,7 +138,7 @@ public struct PackManifest: Codable, Equatable, Sendable {
     /// 单独的 `.` 段无害(stdlib 解析时折叠),但 `..` 一律拒绝以防越界。
     static func isSafeRelativeScriptPath(_ path: String) -> Bool {
         guard !path.isEmpty else { return false }
-        guard !path.hasPrefix("/") else { return false }
+        guard !path.hasPrefix("/"), !path.contains("\0"), !path.contains("\\") else { return false }
         let segments = path.split(separator: "/", omittingEmptySubsequences: false)
         for seg in segments where seg == ".." { return false }
         return true
@@ -125,7 +150,11 @@ public struct PackAction: Codable, Equatable, Sendable {
     public var id: String            // 包内稳定标识(更新时按它匹配)
     public var title: String
     public var icon: String          // SF Symbol,默认 bolt
-    public var script: String        // 相对仓库根的脚本路径,如 "actions/x.zsh"
+    public var script: String?       // 纯 UI 动作无需脚本
+    public var ui: PackUI?
+    public var launcher: PackLauncher?
+    public var contextMenu: Bool
+    public var capabilities: [PluginCapability]
     public var targets: TargetKind
     public var utis: [String]        // nil → []
     public var extensions: [String]
@@ -138,15 +167,18 @@ public struct PackAction: Codable, Equatable, Sendable {
     public var timeoutSeconds: Int   // nil → 60
     public var settings: [PackSetting]
 
-    public init(id: String, title: String, icon: String = "bolt", script: String,
+    public init(id: String, title: String, icon: String = "bolt", script: String? = nil,
                 targets: TargetKind = .any, utis: [String] = [],
                 extensions: [String] = [], filenamePattern: String? = nil,
                 placement: Placement = .topLevel, variants: VariantSource? = nil,
-                timeoutSeconds: Int = 60, settings: [PackSetting] = []) {
+                timeoutSeconds: Int = 60, settings: [PackSetting] = [],
+                ui: PackUI? = nil, launcher: PackLauncher? = nil, contextMenu: Bool = true,
+                capabilities: [PluginCapability] = []) {
         self.id = id
         self.title = title
         self.icon = icon
         self.script = script
+        self.ui = ui; self.launcher = launcher; self.contextMenu = contextMenu; self.capabilities = capabilities
         self.targets = targets
         self.utis = utis
         self.extensions = extensions
@@ -159,6 +191,7 @@ public struct PackAction: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, title, icon, script, targets, utis, extensions, filenamePattern, placement, variants, timeoutSeconds, settings
+        case ui, launcher, contextMenu, capabilities
     }
 
     public init(from decoder: Decoder) throws {
@@ -166,7 +199,11 @@ public struct PackAction: Codable, Equatable, Sendable {
         self.id = try c.decodeIfPresent(String.self, forKey: .id) ?? ""
         self.title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
         self.icon = try c.decodeIfPresent(String.self, forKey: .icon) ?? "bolt"
-        self.script = try c.decodeIfPresent(String.self, forKey: .script) ?? ""
+        self.script = try c.decodeIfPresent(String.self, forKey: .script)
+        self.ui = try c.decodeIfPresent(PackUI.self, forKey: .ui)
+        self.launcher = try c.decodeIfPresent(PackLauncher.self, forKey: .launcher)
+        self.contextMenu = try c.decodeIfPresent(Bool.self, forKey: .contextMenu) ?? true
+        self.capabilities = try c.decodeIfPresent([PluginCapability].self, forKey: .capabilities) ?? []
         self.targets = try c.decodeIfPresent(TargetKind.self, forKey: .targets) ?? .any
         self.utis = try c.decodeIfPresent([String].self, forKey: .utis) ?? []
         self.extensions = try c.decodeIfPresent([String].self, forKey: .extensions) ?? []
@@ -182,7 +219,11 @@ public struct PackAction: Codable, Equatable, Sendable {
         try c.encode(id, forKey: .id)
         try c.encode(title, forKey: .title)
         try c.encode(icon, forKey: .icon)
-        try c.encode(script, forKey: .script)
+        try c.encodeIfPresent(script, forKey: .script)
+        try c.encodeIfPresent(ui, forKey: .ui)
+        try c.encodeIfPresent(launcher, forKey: .launcher)
+        if !contextMenu { try c.encode(contextMenu, forKey: .contextMenu) }
+        if !capabilities.isEmpty { try c.encode(capabilities, forKey: .capabilities) }
         try c.encode(targets, forKey: .targets)
         try c.encode(utis, forKey: .utis)
         if !extensions.isEmpty { try c.encode(extensions, forKey: .extensions) }

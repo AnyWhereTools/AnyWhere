@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 4,
+  "uiApiVersion": 1,
+  "name": "Text Toolbox",
+  "author": "AnyWhere",
+  "description": "A minimal custom UI plugin example.",
+  "icon": "textformat",
+  "actions": [
+    {
+      "id": "text-tool",
+      "title": "文本工具",
+      "icon": "textformat",
+      "contextMenu": false,
+      "launcher": { "keywords": ["text", "文本"] },
+      "ui": { "entry": "ui/index.html", "height": 420 },
+      "script": "actions/demo.zsh",
+      "timeoutSeconds": 15,
+      "capabilities": ["clipboard.write", "task.run"],
+      "settings": [{"key":"PREFIX", "title":"输出前缀", "type":"text", "defaultValue":"Demo"}]
+    },
+    {
+      "id": "context-viewer",
+      "title": "查看调用上下文",
+      "targets": "files",
+      "extensions": ["txt"],
+      "launcher": {"keywords": ["context"]},
+      "ui": {"entry": "ui/context.html", "height": 320}
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>调用上下文</title>
+  <style>
+    body { color: CanvasText; background: Canvas; font: 14px -apple-system, sans-serif; padding: 20px; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <h1>调用上下文</h1>
+  <p>此功能只有网页，没有后端脚本。从 Finder 的 .txt 文件右键进入可看到文件路径快照。</p>
+  <pre id="context" role="status"></pre>
+  <script>
+    anywhere.onEnter(context => {
+      document.querySelector('#context').textContent = JSON.stringify(context, null, 2);
+    });
+  </script>
+</body>
+</html>

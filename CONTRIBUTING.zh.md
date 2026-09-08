@@ -46,6 +46,8 @@ make run         # 构建并启动应用
 
 ## 新增内置预设
 
+开发自定义插件时，从[文本工具示例](examples/ui-tool-pack/README.zh.md)开始；API、资源限制和调试方式见[中文 UI 文档](docs/plugin-ui.zh.md)。宿主集成测试由 XcodeGen 的 `AnyWhereTests` 目标提供，可运行 `xcodebuild -project AnyWhere.xcodeproj -scheme AnyWhere -destination 'platform=macOS' test`；首次先运行 `make gen`。Core 单测与现有预设测试仍分别使用 `make test`、`make test-presets`。
+
 1. 在 `App/PresetScripts/` 添加 zsh 脚本，遵循[脚本环境契约](docs/pack-spec.zh.md#script-environment-contract)。
 2. 在 `Core/Sources/AnyWhereCore/Models.swift` 的 `MenuConfig.defaultSeed()` 中注册，使用稳定的 `presetKey` 和抽象标题 key，并补齐 Core 中英文翻译。
 3. 按需更新 `ModelsTests`、`IPCTests` 中与预设数量有关的断言。

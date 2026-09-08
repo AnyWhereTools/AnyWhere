@@ -143,7 +143,9 @@ final class AppState: ObservableObject {
     }
 
     private func buildSnapshot() -> ExtensionSnapshot {
-        let listings = MenuBuilder.prepareListings(config: config, base: AppPaths.configDirectory())
+        let menuConfig = MenuConfig(schemaVersion: config.schemaVersion,
+                                    actions: config.actions.filter { packManager.appearsInContextMenu($0) })
+        let listings = MenuBuilder.prepareListings(config: menuConfig, base: AppPaths.configDirectory())
         // 自定义图片图标:把缩放后的 PNG base64 随快照带给扩展(扩展零文件访问)。
         var iconImages: [String: String] = [:]
         for action in config.actions {
@@ -151,7 +153,7 @@ final class AppState: ObservableObject {
                   let base64 = IconStore.base64PNG(for: fileName) else { continue }
             iconImages[action.id.uuidString] = base64
         }
-        return ExtensionSnapshot(config: config, variantListings: listings, iconImages: iconImages)
+        return ExtensionSnapshot(config: menuConfig, variantListings: listings, iconImages: iconImages)
     }
 
     private func postSnapshot(_ encoded: String) {

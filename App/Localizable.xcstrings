@@ -1,6 +1,31 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "plugins.taskStopFailed": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"The running task has not stopped. Try again after it exits."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"正在运行的任务尚未停止，请等待退出后重试。"}}}},
+    "plugins.title": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Plugin Search"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"插件搜索"}}}},
+    "plugins.openSearch": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Open Plugin Search"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"打开插件搜索"}}}},
+    "plugins.search": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Search plugins"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"搜索插件"}}}},
+    "plugins.noMatches": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"No matching plugins. Enable a search entry in Extension Packs."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"没有匹配的插件。请在扩展包中启用搜索入口。"}}}},
+    "plugins.back": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Back to Search"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"返回搜索"}}}},
+    "plugins.reload": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Reload Page"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"重新加载页面"}}}},
+    "plugins.pageFailed": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"The plugin page stopped. Reload to start a new session."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"插件页面已停止，请重新加载以开始新会话。"}}}},
+    "plugins.switchTitle": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Open a new operation?"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"是否打开新操作？"}}}},
+    "plugins.switchBody": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Switching ends the current page and cancels its task."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"切换将结束当前页面并取消其任务。"}}}},
+    "plugins.keep": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Keep Current Operation"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"保留当前操作"}}}},
+    "plugins.switch": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Open New Operation"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"打开新操作"}}}},
+    "plugins.shortcut": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Global shortcut"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"全局快捷键"}}}},
+    "plugins.shortcutConflict": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"This shortcut could not be registered. The previous binding is unchanged."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"无法注册此快捷键，已保留原绑定。"}}}},
+    "plugins.disableShortcut": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Disable"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"停用"}}}},
+    "plugins.disabled": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Disabled"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已停用"}}}},
+    "plugins.pressShortcut": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Press shortcut…"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"请按快捷键…"}}}},
+    "plugins.developerMode": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Developer mode (Web Inspector; local pack reload)"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"开发模式（网页检查器、本地包重新加载）"}}}},
+    "plugins.contextMenu": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Context Menu"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"右键"}}}},
+    "plugins.launcher": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Search"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"搜索"}}}},
+    "plugins.done": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Done"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"完成"}}}},
+    "plugins.clearData": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Also delete this plugin's configuration, passwords and data"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"同时删除此插件的配置、密码和数据"}}}},
+    "plugins.reloadLocal": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Reload Local Pack…"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"重新加载本地包…"}}}},
+    "plugins.updateCancelled": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Update cancelled; the current operation was preserved."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已取消更新，保留当前操作。"}}}},
+    "plugins.taskBusy": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"This function already has a running task."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"此功能已有任务正在运行。"}}}},
     "editor.extensions": {
       "localizations": {
         "en": {

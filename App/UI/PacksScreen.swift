@@ -168,10 +168,13 @@ struct ScreenPacks: View {
         alert.alertStyle = .warning
         alert.addButton(withTitle: String(localized: "packs.uninstall"))
         alert.addButton(withTitle: String(localized: "packs.cancel"))
+        let clear = NSButton(checkboxWithTitle: String(localized: "plugins.clearData"), target: nil, action: nil)
+        alert.accessoryView = clear
         if alert.runModal() == .alertFirstButtonReturn {
-            try? packManager.uninstall(pack.key)
-            expanded.remove(pack.key)
-            updates[pack.key] = nil
+            do {
+                try packManager.uninstall(pack.key, clearData: clear.state == .on)
+                expanded.remove(pack.key); updates[pack.key] = nil
+            } catch { NSAlert(error: error).runModal() }
         }
     }
 
@@ -268,6 +271,10 @@ struct PackRow: View {
     let onUninstall: () -> Void
 
     @ObservedObject private var state = AppState.shared
+    @ObservedObject private var manager = AppState.shared.packManager
+    @State private var configurationAction: MenuAction?
+    @State private var configurationError: String?
+    @AppStorage("pluginDeveloperMode") private var developerMode = false
 
     /// 该包的动作(按 sortOrder 稳定排序),用于展开列表 + 启停。
     private var actions: [MenuAction] {
@@ -280,6 +287,12 @@ struct PackRow: View {
         VStack(spacing: 0) {
             header
             if expanded { expandedBody }
+        }
+        .sheet(item: $configurationAction) { action in
+            VStack {
+                PackConfigurationForm(actionID: action.id, fields: manager.configurationFields(for: action))
+                Button(String(localized: "plugins.done")) { configurationAction = nil }
+            }.padding(16).frame(minWidth: 480)
         }
     }
 
@@ -324,19 +337,33 @@ struct PackRow: View {
                 ForEach(Array(actions.enumerated()), id: \.element.id) { i, action in
                     if i > 0 { Rectangle().fill(AWColor.separator).frame(height: 0.5) }
                     HStack(spacing: 9) {
+                        if manager.appearsInContextMenu(action) {
+                        Text(String(localized: "plugins.contextMenu")).font(.caption)
                         AWSwitch(
                             Binding(get: { action.isEnabled },
                                     set: { onSetEnabled($0, action.id) }),
                             scale: 0.62)
+                        }
+                        if manager.launcherEntry(actionID: action.id)?.definition.launcher != nil {
+                            Text(String(localized: "plugins.launcher")).font(.caption)
+                            Toggle(String(localized: "plugins.launcher"), isOn: Binding(get: { (try? manager.preferences.isEnabled(actionID: action.id)) ?? false }, set: { enabled in
+                                do { try manager.setLauncherEnabled(enabled, actionID: action.id); configurationError = nil }
+                                catch { configurationError = error.localizedDescription }
+                            })).labelsHidden().toggleStyle(.switch).controlSize(.mini)
+                        }
                         Text(action.title)
                             .font(.system(size: 12.5))
                             .foregroundStyle(AWColor.label)
                         Spacer(minLength: 0)
-                        AWButton(String(localized: "packs.viewScript"), kind: .plain, size: .sm) { onViewScript(action) }
+                        if !manager.configurationFields(for: action).isEmpty {
+                            AWButton(String(localized: "packConfig.title"), kind: .plain, size: .sm) { configurationAction = action }
+                        }
+                        if case .runScript = action.kind {
+                            AWButton(String(localized: "packs.viewScript"), kind: .plain, size: .sm) { onViewScript(action) }
+                        }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .opacity(action.isEnabled ? 1 : 0.55)
                 }
             }
             .background(AWColor.card)
@@ -345,7 +372,11 @@ struct PackRow: View {
                 .stroke(AWColor.hairline, lineWidth: 0.5))
 
             // 按钮行
+            if let configurationError { Text(configurationError).foregroundStyle(.red).font(.caption) }
             HStack(spacing: 8) {
+                if pack.isLocal && developerMode {
+                    AWButton(String(localized: "plugins.reloadLocal"), size: .sm, action: onUpdate)
+                }
                 if update != nil {
                     AWButton(String(localized: "packs.updateEllipsis"), systemImage: "arrow.down.circle",
                              kind: .primary, size: .sm, action: onUpdate)

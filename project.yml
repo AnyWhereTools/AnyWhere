@@ -17,6 +17,16 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     # 签名由 Local.xcconfig 控制（默认 ad-hoc；正式分发用 Developer ID）
 targets:
+  AnyWhereTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [AppTests]
+    dependencies:
+      - target: AnyWhere
+      - package: AnyWhereCore
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
   AnyWhere:
     type: application
     platform: macOS
@@ -86,3 +96,5 @@ schemes:
         AnyWhere: all
     run:
       config: Debug
+    test:
+      targets: [AnyWhereTests]

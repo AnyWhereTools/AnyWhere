@@ -292,13 +292,19 @@ struct PackImportSheet: View {
                     Text(sel.title).font(.system(size: 13, weight: .semibold))
                     Badge(matchSummary(sel), tone: .gray)
                     Spacer(minLength: 0)
-                    Text(sel.script)
+                    Text(sel.script ?? sel.ui?.entry ?? "")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(AWColor.label3)
                         .lineLimit(1)
                         .truncationMode(.head)
                 }
-                CodeBlock(cloned.scripts[sel.id] ?? String(localized: "packImport.scriptReadFailed"),
+                Text(sel.capabilities.map(\.rawValue).joined(separator: ", ")).font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    if sel.contextMenu { Text(String(localized: "plugins.contextMenu")) }
+                    if let launcher = sel.launcher { Text(String(localized: "plugins.launcher") + ": " + launcher.keywords.joined(separator: ", ")) }
+                    if let ui = sel.ui { Text("UI: " + ui.entry) }
+                }.font(.caption).foregroundStyle(.secondary)
+                CodeBlock(cloned.scripts[sel.id] ?? sel.ui.flatMap { try? String(contentsOf: cloned.tempDir.appendingPathComponent($0.entry), encoding: .utf8) } ?? String(localized: "packImport.scriptReadFailed"),
                           lang: String(localized: "packImport.scriptReadonlyLang"))
                     .frame(maxHeight: .infinity)
             }
@@ -583,7 +589,7 @@ struct PackUpdateSheet: View {
                 .foregroundStyle(AWColor.green)
             Text(String(localized: "packImport.newActionPrefix"))
                 .font(.system(size: 12))
-            + Text(pa.script)
+            + Text(pa.script ?? pa.ui?.entry ?? "")
                 .font(.system(size: 12, design: .monospaced))
             Badge(String(localized: "packImport.defaultDisabled"), tone: .gray)
             Spacer(minLength: 0)
@@ -694,8 +700,8 @@ struct PackUpdateSheet: View {
 // 远端新增的脚本路径 → 对应 PackAction(用于「新增动作」行)。
 private extension PackUpdate {
     func newAddedActions(currentManifest: PackManifest) -> [PackAction] {
-        let oldPaths = Set(currentManifest.actions.map(\.script))
-        return newManifest.actions.filter { !oldPaths.contains($0.script) }
+        let oldIDs = Set(currentManifest.actions.map(\.id))
+        return newManifest.actions.filter { !oldIDs.contains($0.id) }
     }
 }
 

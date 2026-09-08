@@ -94,6 +94,7 @@ public enum PackSettings {
 public protocol PackSecretStore {
     func read(account: String) throws -> String?
     func write(_ value: String?, account: String) throws
+    func removeAccounts(prefix: String) throws
 }
 
 public final class PackConfigurationStore {
@@ -134,6 +135,14 @@ public final class PackConfigurationStore {
         Self.lock.lock(); defer { Self.lock.unlock() }
         try PackSettings.validate(fields)
         try persist(actionID: actionID, fields: fields, values: [:])
+    }
+
+    public func remove(actionID: UUID) throws {
+        Self.lock.lock(); defer { Self.lock.unlock() }
+        try secrets.removeAccounts(prefix: actionID.uuidString + ".")
+        if FileManager.default.fileExists(atPath: file(actionID).path) {
+            try FileManager.default.removeItem(at: file(actionID))
+        }
     }
 
     private func persist(actionID: UUID, fields: [PackSetting], values: [String: String]) throws {
