@@ -30,6 +30,19 @@ final class ConfigStoreTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(MenuConfig.self, from: JSONEncoder().encode(loaded)), loaded)
     }
 
+    func testFoldersAndContainerPromotesConfigVersionAndRoundTrips() throws {
+        let dir = freshDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        var config = MenuConfig.defaultSeed()
+        config.schemaVersion = 1
+        config.actions[0].matching.targets = .foldersAndContainer
+        let store = ConfigStore(directory: dir)
+        try store.save(config)
+        let loaded = try store.load()
+        XCTAssertEqual(loaded.schemaVersion, 2)
+        XCTAssertEqual(loaded.actions[0].matching.targets, .foldersAndContainer)
+    }
+
     func testCacheInvalidatesWhenFileChanges() throws {
         let dir = freshDir()
         let store = ConfigStore(directory: dir)

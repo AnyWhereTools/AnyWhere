@@ -62,7 +62,7 @@ struct PvEditor: View {
     @State private var appBundleID = ""
     @State private var extensionsText = ""
     @State private var extensionsEdited = false
-    @State private var targetChoice = 0          // 0 文件和文件夹 1 仅文件 2 仅文件夹 3 目录空白处
+    @State private var targetChoice = 0          // 0 文件和文件夹 1 仅文件 2 仅文件夹 3 目录空白处 4 文件夹和空白处
     @State private var minSelText = ""           // 最少选中数（空=不限）
     @State private var maxSelText = ""           // 最多选中数（空=不限）
     @State private var placementChoice = 0       // 0 菜单顶层 1 子菜单
@@ -330,7 +330,7 @@ struct PvEditor: View {
     // MARK: 弹出选择(Menu 驱动真实交互,外观对照 AWPopup)
 
     private var targetPopup: some View {
-        let labels = [String(localized: "editor.targetFilesAndFolders"), String(localized: "editor.targetFilesOnly"), String(localized: "editor.targetFoldersOnly"), String(localized: "editor.targetContainer")]
+        let labels = [String(localized: "editor.targetFilesAndFolders"), String(localized: "editor.targetFilesOnly"), String(localized: "editor.targetFoldersOnly"), String(localized: "editor.targetContainer"), String(localized: "editor.targetFoldersAndContainer")]
         return Menu {
             ForEach(labels.indices, id: \.self) { i in
                 Button(labels[i]) { targetChoice = i; commit() }
@@ -388,7 +388,7 @@ struct PvEditor: View {
         extensionsEdited = false
         minSelText = action.matching.minSelectionCount.map(String.init) ?? ""
         maxSelText = action.matching.maxSelectionCount.map(String.init) ?? ""
-        targetChoice = [TargetKind.any, .files, .folders, .container].firstIndex(of: action.matching.targets) ?? 0
+        targetChoice = [TargetKind.any, .files, .folders, .container, .foldersAndContainer].firstIndex(of: action.matching.targets) ?? 0
         placementChoice = action.placement == .submenu ? 1 : 0
         switch action.variants {
         case .fixed(let list): variantChoice = 1; variantsFixed = list.joined(separator: ", ")
@@ -427,7 +427,7 @@ struct PvEditor: View {
         if extensionsEdited {
             saved.matching.setUserExtensions(MatchRule.parseExtensions(extensionsText))
         }
-        saved.matching.targets = [TargetKind.any, .files, .folders, .container][targetChoice]
+        saved.matching.targets = [TargetKind.any, .files, .folders, .container, .foldersAndContainer][targetChoice]
         // 空/非正整数 = 不限;「目录空白处」无选中项,清空两者。
         func parseCount(_ s: String) -> Int? {
             guard let n = Int(s.trimmingCharacters(in: .whitespaces)), n > 0 else { return nil }
@@ -587,6 +587,7 @@ struct PvPackPanel: View {
         case .folders: return String(localized: "editor.targetFoldersOnly")
         case .any: return String(localized: "editor.targetFilesAndFolders")
         case .container: return String(localized: "editor.targetContainer")
+        case .foldersAndContainer: return String(localized: "editor.targetFoldersAndContainer")
         }
     }
     private var resolvedUTI: String {

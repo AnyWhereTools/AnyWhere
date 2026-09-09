@@ -36,6 +36,29 @@ final class RuleMatcherTests: XCTestCase {
         XCTAssertFalse(RuleMatcher.matches(rule: rule, context: .items([file, folder])))
     }
 
+    func testFoldersAndContainerMatchesBothContextsButRejectsFiles() throws {
+        let data = Data(#"{"targets":"foldersAndContainer"}"#.utf8)
+        var rule = try JSONDecoder().decode(MatchRule.self, from: data)
+        XCTAssertTrue(RuleMatcher.matches(rule: rule, context: .items([folder])))
+        XCTAssertTrue(RuleMatcher.matches(rule: rule, context: .container(dir)))
+        XCTAssertFalse(RuleMatcher.matches(rule: rule, context: .items([file])))
+        XCTAssertFalse(RuleMatcher.matches(rule: rule, context: .items([folder, file])))
+        XCTAssertFalse(RuleMatcher.matches(rule: rule, context: .items([])))
+
+        rule.minSelectionCount = 2
+        rule.maxSelectionCount = 2
+        XCTAssertFalse(RuleMatcher.matches(rule: rule, context: .items([folder])))
+        XCTAssertTrue(RuleMatcher.matches(rule: rule, context: .items([folder, dir])))
+        XCTAssertFalse(RuleMatcher.matches(rule: rule, context: .items([folder, dir, folder])))
+        XCTAssertTrue(RuleMatcher.matches(rule: rule, context: .container(dir)))
+
+        rule.minSelectionCount = nil
+        rule.filenamePattern = "sub"
+        XCTAssertTrue(RuleMatcher.matches(rule: rule, context: .items([folder])))
+        XCTAssertFalse(RuleMatcher.matches(rule: rule, context: .items([dir])))
+        XCTAssertTrue(RuleMatcher.matches(rule: rule, context: .container(dir)))
+    }
+
     func testUTIFilter() {
         let imageRule = MatchRule(targets: .files, utis: ["public.image"])
         XCTAssertTrue(RuleMatcher.matches(rule: imageRule, context: .items([file])))

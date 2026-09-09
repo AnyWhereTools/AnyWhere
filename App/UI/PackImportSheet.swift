@@ -428,6 +428,7 @@ struct PackImportSheet: View {
         case .folders: target = String(localized: "packImport.targetFoldersOnly")
         case .any: target = String(localized: "packImport.targetFilesAndFolders")
         case .container: target = String(localized: "packImport.targetContainer")
+        case .foldersAndContainer: target = String(localized: "editor.targetFoldersAndContainer")
         }
         var parts = [target]
         if !a.utis.isEmpty { parts.append(a.utis.joined(separator: " · ")) }

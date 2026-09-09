@@ -22,7 +22,7 @@ public enum IconSpec: Codable, Equatable, Sendable {
 
 public enum Placement: String, Codable, Sendable { case topLevel, submenu }
 
-public enum TargetKind: String, Codable, Sendable { case files, folders, any, container }
+public enum TargetKind: String, Codable, Sendable { case files, folders, any, container, foldersAndContainer }
 
 /// 通用子菜单展开机制：任何动作都可声明 variants，
 /// 子项的值在执行时经 ANYWHERE_VARIANT 环境变量传给脚本。

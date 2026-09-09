@@ -48,6 +48,7 @@ struct AnyWhereApp: App {
             Button(String(localized: "menubar.quit")) { NSApp.terminate(nil) }
         }
         Window(String(localized: "menubar.settingsWindowTitle"), id: "settings") { SettingsWindow() }
+            .defaultSize(width: 1120, height: 720)
         Window(String(localized: "menubar.logWindowTitle"), id: "log") {
             ExecutionLogView()
         }

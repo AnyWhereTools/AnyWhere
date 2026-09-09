@@ -1,5 +1,8 @@
 import Foundation
 
+/// Market categories are derived from the entries in a pack so legacy manifests remain valid.
+public enum PackType: String, Codable, CaseIterable, Sendable { case finder, tool, workflow }
+
 /// 扩展包清单(`manifest.json`,位于仓库根)。
 ///
 /// 解析策略:
@@ -18,6 +21,14 @@ public struct PackManifest: Codable, Equatable, Sendable {
     public var icon: String          // SF Symbol 名,默认 shippingbox
     public var actions: [PackAction]
     public var uiApiVersion: Int?
+
+    /// Composable market categories. Workflow is reserved for the workflow declaration added later.
+    public var types: Set<PackType> {
+        var result = Set<PackType>()
+        if actions.contains(where: { $0.contextMenu }) { result.insert(.finder) }
+        if actions.contains(where: { $0.launcher != nil || $0.ui != nil }) { result.insert(.tool) }
+        return result
+    }
 
     public init(schemaVersion: Int, name: String, author: String? = nil,
                 description: String? = nil, icon: String = "shippingbox",

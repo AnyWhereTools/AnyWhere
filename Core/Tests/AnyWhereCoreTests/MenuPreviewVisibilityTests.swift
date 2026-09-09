@@ -3,6 +3,14 @@ import XCTest
 
 final class MenuPreviewVisibilityTests: XCTestCase {
 
+    func testFoldersAndContainer() {
+        let rule = MatchRule(targets: .foldersAndContainer)
+        XCTAssertFalse(MenuPreviewVisibility.isVisible(rule, in: .image))
+        XCTAssertFalse(MenuPreviewVisibility.isVisible(rule, in: .file))
+        XCTAssertTrue(MenuPreviewVisibility.isVisible(rule, in: .folder))
+        XCTAssertTrue(MenuPreviewVisibility.isVisible(rule, in: .empty))
+    }
+
     // targets=.any 无 UTI：除空白处外都显示（empty 仅 container）。
     func testAnyNoUTI() {
         let rule = MatchRule(targets: .any)

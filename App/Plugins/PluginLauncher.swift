@@ -3,6 +3,11 @@ import SwiftUI
 import Carbon
 import AnyWhereCore
 
+private final class LauncherPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
+
 @MainActor
 final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelegate {
     static let shared = PluginLauncherController()
@@ -10,10 +15,13 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
     private var hotKey: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
     @Published var query = ""
-    @Published var selectedID: UUID?
+    @Published var selectedID: String?
+    @Published private(set) var focusRequest = UUID()
     @Published var session: PluginSession?
+    private var toolWindows: [UUID: DetachedToolWindowController] = [:]
     @Published var error: String?
     @Published private(set) var shortcutLabel = "⌃⌥Space"
+    private var resultCount = 0
 
     func start() {
         guard eventHandler == nil else { return }
@@ -53,24 +61,54 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
         if let hotKey { UnregisterEventHotKey(hotKey) }; hotKey = nil
         if let eventHandler { RemoveEventHandler(eventHandler) }; eventHandler = nil
     }
-    func toggle() { if window?.isKeyWindow == true { window?.orderOut(nil) } else { show() } }
+    func hide() { window?.orderOut(nil) }
+    func toggle() { if window?.isKeyWindow == true { hide() } else { show() } }
     func show() {
         if window == nil {
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
-                             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+            let w = LauncherPanel(contentRect: NSRect(x: 0, y: 0, width: 680, height: 74),
+                                  styleMask: [.borderless], backing: .buffered, defer: false)
             w.title = String(localized: "plugins.title")
+            w.identifier = NSUserInterfaceItemIdentifier("AnyWhere.launcher")
+            w.isOpaque = false; w.backgroundColor = .clear; w.hasShadow = true
+            w.level = .floating; w.hidesOnDeactivate = false; w.isMovableByWindowBackground = true
+            w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            window = w
             w.contentView = NSHostingView(rootView: PluginLauncherView(controller: self, manager: AppState.shared.packManager))
             w.isReleasedWhenClosed = false; w.delegate = self
-            if let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) {
-                let area = screen.visibleFrame
-                w.setFrameOrigin(NSPoint(x: area.midX - w.frame.width / 2, y: area.midY - w.frame.height / 2))
-            }
-            window = w
         }
+        if window?.isVisible != true, let window,
+           let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) {
+            let area = screen.visibleFrame
+            window.setFrameOrigin(NSPoint(x: area.midX - window.frame.width / 2,
+                                          y: max(area.minY + 20, area.maxY - area.height * 0.22 - window.frame.height)))
+        }
+        updateLayout(resultCount: resultCount)
+        focusRequest = UUID()
         NSApp.activate(ignoringOtherApps: true); window?.makeKeyAndOrderFront(nil)
     }
+    func updateLayout(resultCount: Int) {
+        self.resultCount = resultCount
+        guard let window else { return }
+        let area = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? window.frame
+        let hasQuery = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let searchHeight: CGFloat = hasQuery ? 74 + CGFloat(max(1, min(resultCount, 7))) * 64 + 44 : 74
+        let height = min(CGFloat(session?.entry.definition.ui?.height ?? 460) + 56, area.height - 40)
+        let size = NSSize(width: min(session == nil ? 680 : max(680, window.frame.width), area.width - 40),
+                          height: min((session == nil ? searchHeight : height) + (error == nil ? 0 : 44), area.height - 40))
+        window.minSize = session == nil ? NSSize(width: 420, height: 74) : NSSize(width: 520, height: 280)
+        if session == nil { window.styleMask.remove(.resizable) } else { window.styleMask.insert(.resizable) }
+        var frame = NSRect(x: window.frame.minX, y: window.frame.maxY - size.height, width: size.width, height: size.height)
+        frame.origin.x = max(area.minX + 20, min(frame.origin.x, area.maxX - frame.width - 20))
+        frame.origin.y = max(area.minY + 20, min(frame.origin.y, area.maxY - frame.height - 20))
+        window.setFrame(frame, display: true)
+        window.invalidateShadow()
+    }
     func windowShouldClose(_ sender: NSWindow) -> Bool { sender.orderOut(nil); return false }
-    func back() { session?.close(); session = nil }
+    func back() {
+        session?.close(); session = nil
+        focusRequest = UUID()
+        updateLayout(resultCount: resultCount)
+    }
     func endSession(packKey: String, confirm: Bool = false) -> Bool {
         guard session?.entry.action.packID == packKey else { return true }
         if confirm && !confirmSwitch() { return false }
@@ -95,13 +133,18 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
         if entry.definition.ui == nil {
             ActionRunner().runLauncher(entry: entry, invocation: context)
         } else {
-            session = PluginSession(entry: entry, invocation: context)
-            show()
-            if let height = entry.definition.ui?.height, let window {
-                let maxHeight = (window.screen?.visibleFrame.height ?? 800) - 70
-                window.setContentSize(NSSize(width: window.contentLayoutRect.width, height: min(max(CGFloat(height) + 48, 280), maxHeight)))
-            }
+            openDetached(entry, invocation: context)
         }
+    }
+
+    /// Tool actions default to their own window; the launcher remains available for another search.
+    func openDetached(_ entry: PluginLauncherEntry, invocation: PluginInvocation) {
+        let tool = DetachedToolWindowController(entry: entry, invocation: invocation) { [weak self] id in
+            self?.toolWindows.removeValue(forKey: id)
+        }
+        toolWindows[tool.id] = tool
+        tool.show()
+        hide()
     }
     func reload() {
         guard let session else { return }
@@ -118,50 +161,214 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
     }
 }
 
+@MainActor
+private final class DetachedToolWindowController: NSObject, NSWindowDelegate {
+    let id = UUID()
+    let session: PluginSession
+    private let window: NSPanel
+    private let onClose: (UUID) -> Void
+
+    init(entry: PluginLauncherEntry, invocation: PluginInvocation, onClose: @escaping (UUID) -> Void) {
+        self.session = PluginSession(entry: entry, invocation: invocation)
+        self.onClose = onClose
+        self.window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 680, height: 520),
+                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        super.init()
+        window.title = entry.definition.title
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.minSize = NSSize(width: 520, height: 280)
+        window.contentView = NSHostingView(rootView: DetachedToolView(session: session, close: { [weak self] in self?.close() }))
+    }
+
+    func show() { NSApp.activate(ignoringOtherApps: true); window.center(); window.makeKeyAndOrderFront(nil) }
+    func close() { session.close(); window.orderOut(nil); onClose(id) }
+    func windowShouldClose(_ sender: NSWindow) -> Bool { close(); return false }
+}
+
+private struct DetachedToolView: View {
+    @ObservedObject var session: PluginSession
+    let close: () -> Void
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(session.entry.definition.title).font(.headline)
+                Spacer()
+                Button(String(localized: "plugins.reload")) { session.webView.reload() }
+                Button(String(localized: "launcher.hide"), action: close)
+            }.padding(12)
+            if let error = session.error { Text(error).font(.caption).foregroundStyle(.red).padding(8) }
+            Divider()
+            PluginWebView(session: session).id(session.id)
+        }
+    }
+}
+
 struct PluginLauncherView: View {
     @ObservedObject var controller: PluginLauncherController
     @ObservedObject var manager: PackManager
-    private var matches: [PluginSearchMatch] {
-        let entries = manager.launcherEntries().map { PluginSearchEntry(id: $0.id, title: $0.definition.title, keywords: $0.definition.launcher?.keywords ?? []) }
-        return PluginSearch.matches(query: controller.query, entries: entries, recent: (try? manager.preferences.recent()) ?? [])
+    @State private var entries: [PluginSearchEntry] = []
+    @State private var recent: [UUID] = []
+    @State private var apps: [ApplicationSearchEntry] = []
+    @State private var loadingApps = false
+
+    private enum Result: Identifiable {
+        case plugin(PluginSearchMatch), application(ApplicationSearchEntry)
+        var id: String {
+            switch self {
+            case .plugin(let match): return match.entry.id.uuidString
+            case .application(let app): return app.id
+            }
+        }
+        var title: String {
+            switch self {
+            case .plugin(let match): return match.entry.title
+            case .application(let app): return app.name
+            }
+        }
     }
-    private func launch(_ id: UUID?) {
-        guard let match = matches.first(where: { $0.entry.id == (id ?? matches.first?.entry.id) }),
-              let entry = manager.launcherEntry(actionID: match.entry.id) else { return }
-        controller.selectedID = entry.id
-        controller.open(entry, invocation: PluginInvocation(actionID: entry.id, source: .launcher,
-                                                           query: controller.query, argument: match.argument))
+    private var results: [Result] {
+        let plugins = PluginSearch.matches(query: controller.query, entries: entries, recent: recent, keywordsOnly: true)
+        if !plugins.isEmpty { return plugins.map(Result.plugin) }
+        return ApplicationSearch.matches(query: controller.query, apps: apps).map(Result.application)
+    }
+    private var hasQuery: Bool { !controller.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    private func launch(_ id: String?) {
+        guard let result = results.first(where: { $0.id == (id ?? results.first?.id) }) else { return }
+        controller.selectedID = result.id
+        switch result {
+        case .plugin(let match):
+            guard let entry = manager.launcherEntries().first(where: { $0.id == match.entry.id }) else { reloadEntries(); return }
+            controller.open(entry, invocation: PluginInvocation(actionID: entry.id, source: .launcher,
+                                                               query: controller.query, argument: match.argument))
+        case .application(let app):
+            controller.hide()
+            NSWorkspace.shared.openApplication(at: app.url, configuration: .init()) { _, error in
+                Task { @MainActor in
+                    if let error { controller.error = error.localizedDescription; controller.show() }
+                    else { controller.query = "" }
+                }
+            }
+        }
     }
     private func move(_ delta: Int) {
-        guard !matches.isEmpty else { return }
-        let current = matches.firstIndex { $0.entry.id == controller.selectedID } ?? 0
-        controller.selectedID = matches[max(0, min(matches.count - 1, current + delta))].entry.id
+        guard !results.isEmpty else { return }
+        let current = results.firstIndex { $0.id == controller.selectedID } ?? 0
+        controller.selectedID = results[max(0, min(results.count - 1, current + delta))].id
     }
     var body: some View {
         VStack(spacing: 0) {
             if let session = controller.session {
                 PluginSessionView(session: session, controller: controller)
             } else {
-                PluginSearchField(text: $controller.query, onSubmit: { launch(controller.selectedID) },
-                                  onMove: move, onEscape: { controller.toggle() }).padding(12)
-                if matches.isEmpty {
-                    Text(String(localized: "plugins.noMatches")).foregroundStyle(.secondary).padding(); Spacer()
-                } else {
-                    List(selection: $controller.selectedID) {
-                        ForEach(matches, id: \.entry.id) { match in
-                            Button { launch(match.entry.id) } label: {
-                                VStack(alignment: .leading) {
-                                    Text(match.entry.title)
-                                    Text(match.entry.keywords.joined(separator: ", ")).font(.caption).foregroundStyle(.secondary)
-                                }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                            }.buttonStyle(.plain).tag(match.entry.id)
+                HStack(spacing: 16) {
+                    Image(systemName: "magnifyingglass").font(.system(size: 26, weight: .regular)).foregroundStyle(.secondary)
+                    PluginSearchField(text: $controller.query, focusRequest: controller.focusRequest,
+                                      onSubmit: { launch(controller.selectedID) }, onMove: move, onEscape: { controller.hide() })
+                        .frame(height: 34)
+                    if !controller.query.isEmpty {
+                        Button { controller.query = "" } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
+                        }.buttonStyle(.plain).accessibilityLabel(String(localized: "launcher.clear"))
+                    }
+                }.padding(.horizontal, 24).frame(height: 74)
+                if hasQuery {
+                    Divider().padding(.horizontal, 20)
+                    if results.isEmpty {
+                        Text(loadingApps ? String(localized: "launcher.loadingApps") : String(localized: "launcher.noApps"))
+                            .foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        ScrollViewReader { proxy in
+                            ScrollView {
+                                LazyVStack(spacing: 0) {
+                                    ForEach(results) { result in
+                                        resultRow(result).id(result.id)
+                                    }
+                                }.padding(.horizontal, 10).padding(.vertical, 6)
+                            }
+                            .onChange(of: controller.selectedID) { id in
+                                if let id { proxy.scrollTo(id) }
+                            }
                         }
                     }
+                    HStack {
+                        Text(String(localized: "launcher.footer"))
+                        Spacer()
+                        Text("AnyWhere")
+                    }.font(.system(size: 11)).foregroundStyle(.tertiary)
+                        .padding(.horizontal, 24).frame(height: 30)
                 }
             }
-            if let error = controller.error { Text(error).font(.caption).foregroundStyle(.red).padding(8) }
-        }.frame(minWidth: 420, minHeight: 280)
-            .onChange(of: controller.query) { _ in controller.selectedID = matches.first?.entry.id }
+            if let error = controller.error {
+                Text(error).font(.caption).foregroundStyle(.red).lineLimit(2).padding(.horizontal, 20).frame(height: 44)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: hasQuery || controller.session != nil ? 24 : 37))
+        .overlay(RoundedRectangle(cornerRadius: hasQuery || controller.session != nil ? 24 : 37)
+            .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5))
+        .onChange(of: controller.query) { _ in updateResults() }
+        .onChange(of: controller.error) { _ in controller.updateLayout(resultCount: results.count) }
+        .onReceive(manager.$packs) { _ in DispatchQueue.main.async { reloadEntries() } }
+        .task(id: controller.focusRequest) {
+            reloadEntries()
+            guard controller.session == nil else { return }
+            loadingApps = true
+            let discovered = await Task.detached(priority: .utility) {
+                ApplicationSearch.discover(in: ApplicationSearch.directories)
+            }.value
+            guard !Task.isCancelled else { return }
+            apps = discovered; loadingApps = false; updateResults()
+        }
+    }
+
+    private func resultRow(_ result: Result) -> some View {
+        Button { launch(result.id) } label: {
+            HStack(spacing: 14) {
+                switch result {
+                case .plugin(let match):
+                    if let entry = manager.launcherEntry(actionID: match.entry.id) {
+                        ActionIconView(icon: entry.action.icon, size: 38)
+                    }
+                case .application(let app):
+                    Image(nsImage: NSWorkspace.shared.icon(forFile: app.url.path)).resizable().frame(width: 38, height: 38)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(result.title).font(.system(size: 18, weight: .medium)).lineLimit(1)
+                    if case .plugin(let match) = result {
+                        Text(match.argument.isEmpty ? match.entry.keywords.joined(separator: " · ") : match.argument)
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+                Spacer()
+                if result.id == controller.selectedID {
+                    Text(String(localized: "launcher.open")).font(.caption).foregroundStyle(.secondary)
+                    Text("↵").font(.system(size: 15)).padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
+                }
+            }
+            .padding(.horizontal, 14).frame(height: 64)
+            .background(result.id == controller.selectedID ? Color.primary.opacity(0.08) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 15))
+            .contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityLabel(result.title)
+    }
+
+    private func reloadEntries() {
+        do {
+            entries = try manager.shortcutEntries()
+            recent = try manager.preferences.recent()
+            updateResults()
+        } catch { controller.error = error.localizedDescription }
+    }
+
+    private func updateResults() {
+        if !results.contains(where: { $0.id == controller.selectedID }) || controller.session == nil {
+            controller.selectedID = results.first?.id
+        }
+        controller.updateLayout(resultCount: results.count)
     }
 }
 
@@ -174,6 +381,8 @@ private struct PluginSessionView: View {
                 Button(String(localized: "plugins.back")) { controller.back() }
                 Text(session.entry.definition.title).font(.headline); Spacer()
                 Button(String(localized: "plugins.reload")) { controller.reload() }
+                Button { controller.hide() } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.plain).accessibilityLabel(String(localized: "launcher.hide"))
             }.padding(12)
             if let error = session.error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled).padding(8) }
             Divider(); PluginWebView(session: session).id(session.id)
@@ -183,22 +392,30 @@ private struct PluginSessionView: View {
 
 private struct PluginSearchField: NSViewRepresentable {
     @Binding var text: String
+    let focusRequest: UUID
     let onSubmit: () -> Void
     let onMove: (Int) -> Void
     let onEscape: () -> Void
     func makeCoordinator() -> Coordinator { Coordinator(self) }
-    func makeNSView(context: Context) -> NSSearchField {
-        let field = NSSearchField(); field.placeholderString = String(localized: "plugins.search"); field.delegate = context.coordinator
-        DispatchQueue.main.async { field.window?.makeFirstResponder(field) }; return field
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField(); field.placeholderString = String(localized: "plugins.search"); field.delegate = context.coordinator
+        field.isBordered = false; field.drawsBackground = false; field.focusRingType = .none
+        field.font = .systemFont(ofSize: 24); field.setAccessibilityLabel(String(localized: "plugins.search"))
+        return field
     }
-    func updateNSView(_ field: NSSearchField, context: Context) {
+    func updateNSView(_ field: NSTextField, context: Context) {
         context.coordinator.parent = self
         if field.stringValue != text { field.stringValue = text }
+        if context.coordinator.focusRequest != focusRequest {
+            context.coordinator.focusRequest = focusRequest
+            DispatchQueue.main.async { field.window?.makeFirstResponder(field); field.selectText(nil) }
+        }
     }
-    final class Coordinator: NSObject, NSSearchFieldDelegate {
+    final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: PluginSearchField
+        var focusRequest: UUID?
         init(_ parent: PluginSearchField) { self.parent = parent }
-        func controlTextDidChange(_ notification: Notification) { parent.text = (notification.object as? NSSearchField)?.stringValue ?? "" }
+        func controlTextDidChange(_ notification: Notification) { parent.text = (notification.object as? NSTextField)?.stringValue ?? "" }
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
             guard !textView.hasMarkedText() else { return false }
             switch commandSelector {

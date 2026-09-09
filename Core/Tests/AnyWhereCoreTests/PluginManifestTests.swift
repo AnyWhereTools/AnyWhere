@@ -14,6 +14,15 @@ final class PluginManifestTests: XCTestCase {
         XCTAssertNil(pack.actions[0].script)
         XCTAssertEqual(pack.actions[0].ui?.entry, "ui/index.html")
     }
+    func testMarketTypesAreDerivedAndComposable() throws {
+        var pack = try manifest()
+        XCTAssertEqual(pack.types, [.tool])
+        pack.actions[0].contextMenu = true
+        XCTAssertEqual(pack.types, [.finder, .tool])
+        let data = try JSONEncoder().encode(pack)
+        let legacy = try PackManifest.decode(data)
+        XCTAssertEqual(legacy.types, [.finder, .tool])
+    }
     func testUIRequiresNewSchema() throws {
         XCTAssertThrowsError(try manifest(3).validate())
     }

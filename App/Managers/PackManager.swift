@@ -241,17 +241,31 @@ final class PackManager: ObservableObject {
         return definition.settings
     }
 
-    func launcherEntries() -> [PluginLauncherEntry] {
+    func launcherEntries(includeDisabled: Bool = false) -> [PluginLauncherEntry] {
         packs.flatMap { (pack: InstalledPack) -> [PluginLauncherEntry] in
             let directory = Self.packDir(pack.key)
             return pack.manifest.actions.compactMap { definition in
                 guard definition.launcher != nil,
                       let action = appState().config.actions.first(where: {
                           $0.id == Self.actionUUID(packKey: pack.key, packActionID: definition.id)
-                      }), (try? preferences.isEnabled(actionID: action.id)) == true else { return nil }
+                      }), includeDisabled || (try? preferences.isEnabled(actionID: action.id)) == true else { return nil }
                 return PluginLauncherEntry(id: action.id, action: action, definition: definition, directory: directory)
             }
         }
+    }
+
+    func shortcutEntries(includeDisabled: Bool = false) throws -> [PluginSearchEntry] {
+        try preferences.searchEntries(launcherEntries(includeDisabled: includeDisabled).map {
+            PluginSearchEntry(id: $0.id, title: $0.definition.title, keywords: $0.definition.launcher?.keywords ?? [])
+        })
+    }
+
+    func setShortcut(_ shortcut: PluginShortcut, actionID: UUID) throws {
+        let defaults = launcherEntries(includeDisabled: true).map {
+            PluginSearchEntry(id: $0.id, title: $0.definition.title, keywords: $0.definition.launcher?.keywords ?? [])
+        }
+        try preferences.setShortcut(shortcut, actionID: actionID, defaults: defaults)
+        reload()
     }
 
     func launcherEntry(actionID: UUID) -> PluginLauncherEntry? {

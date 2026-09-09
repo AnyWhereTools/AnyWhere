@@ -28,7 +28,7 @@ public final class ConfigStore {
 
     public func save(_ config: MenuConfig) throws {
         var config = config
-        if config.actions.contains(where: { $0.kind == .openPluginUI }) {
+        if config.actions.contains(where: { $0.kind == .openPluginUI || $0.matching.targets == .foldersAndContainer }) {
             config.schemaVersion = max(2, config.schemaVersion)
         }
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(),

@@ -25,8 +25,8 @@ public enum MenuPreviewVisibility {
     ///
     /// - image: targets ∈ {files, any} 且（utis 为空 或 含图片类）
     /// - file:  targets ∈ {files, any} 且（utis 为空 或 不专属图片）
-    /// - folder: targets ∈ {folders, any}
-    /// - empty: targets == container
+    /// - folder: targets ∈ {folders, any, foldersAndContainer}
+    /// - empty: targets ∈ {container, foldersAndContainer}
     public static func isVisible(_ rule: MatchRule, in context: SimContext) -> Bool {
         switch context {
         case .image:
@@ -41,10 +41,10 @@ public enum MenuPreviewVisibility {
                 && rule.extensions.allSatisfy { imageExtensions.contains(MatchRule.normalizedExtension($0)) }
             return !hasFilters || !onlyImages
         case .folder:
-            return (rule.targets == .folders || rule.targets == .any)
+            return (rule.targets == .folders || rule.targets == .any || rule.targets == .foldersAndContainer)
                 && (rule.extensions.isEmpty || !rule.utis.isEmpty)
         case .empty:
-            return rule.targets == .container
+            return rule.targets == .container || rule.targets == .foldersAndContainer
         }
     }
 

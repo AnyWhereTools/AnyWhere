@@ -12,8 +12,9 @@ public struct PluginSearchMatch: Equatable, Sendable {
 }
 
 public enum PluginSearch {
-    public static func matches(query: String, entries: [PluginSearchEntry], recent: [UUID]) -> [PluginSearchMatch] {
+    public static func matches(query: String, entries: [PluginSearchEntry], recent: [UUID], keywordsOnly: Bool = false) -> [PluginSearchMatch] {
         let query = String(query.drop(while: { $0.isWhitespace }))
+        if keywordsOnly && query.isEmpty { return [] }
         struct Candidate {
             let match: PluginSearchMatch
             let rank: Int
@@ -21,7 +22,7 @@ public enum PluginSearch {
         }
         let candidates: [Candidate] = entries.compactMap { entry in
             if query.isEmpty { return Candidate(match: .init(entry: entry, argument: ""), rank: 0, prefixLength: 0) }
-            return ([entry.title] + entry.keywords).compactMap { key -> Candidate? in
+            return ((keywordsOnly ? [] : [entry.title]) + entry.keywords).compactMap { key -> Candidate? in
                 let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !key.isEmpty else { return nil }
                 if query.compare(key, options: .caseInsensitive) == .orderedSame {
@@ -32,6 +33,7 @@ public enum PluginSearch {
                     return Candidate(match: .init(entry: entry, argument: String(query[range.upperBound...].drop(while: { $0.isWhitespace }))),
                                      rank: 0, prefixLength: key.count)
                 }
+                if keywordsOnly { return nil }
                 if key.range(of: query, options: [.anchored, .caseInsensitive]) != nil {
                     return Candidate(match: .init(entry: entry, argument: ""), rank: 1, prefixLength: 0)
                 }
