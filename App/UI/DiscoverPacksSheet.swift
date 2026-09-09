@@ -102,7 +102,6 @@ struct DiscoverPacksSheet: View {
             AppIcon(pack.icon, size: 30, hue: .teal)
             VStack(alignment: .leading, spacing: 1) {
                 Text(pack.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(AWColor.label)
-                Text(pack.repo).font(.system(size: 10.5)).foregroundStyle(AWColor.label3)
                 if let d = pack.description, !d.isEmpty {
                     Text(d).font(.system(size: 11.5)).foregroundStyle(AWColor.label2).lineLimit(2)
                 }
