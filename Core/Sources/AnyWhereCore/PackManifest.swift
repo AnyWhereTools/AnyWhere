@@ -3,6 +3,17 @@ import Foundation
 /// Market categories are derived from the entries in a pack so legacy manifests remain valid.
 public enum PackType: String, Codable, CaseIterable, Sendable { case finder, tool, workflow }
 
+public struct PackWorkflow: Codable, Equatable, Sendable {
+    public var id: String
+    public var title: String
+    public var steps: [PackWorkflowStep]
+    public init(id: String, title: String, steps: [PackWorkflowStep]) { self.id = id; self.title = title; self.steps = steps }
+}
+public struct PackWorkflowStep: Codable, Equatable, Sendable {
+    public var action: String
+    public init(action: String) { self.action = action }
+}
+
 /// 扩展包清单(`manifest.json`,位于仓库根)。
 ///
 /// 解析策略:
@@ -21,12 +32,14 @@ public struct PackManifest: Codable, Equatable, Sendable {
     public var icon: String          // SF Symbol 名,默认 shippingbox
     public var actions: [PackAction]
     public var uiApiVersion: Int?
+    public var workflows: [PackWorkflow]
 
     /// Composable market categories. Workflow is reserved for the workflow declaration added later.
     public var types: Set<PackType> {
         var result = Set<PackType>()
         if actions.contains(where: { $0.contextMenu }) { result.insert(.finder) }
         if actions.contains(where: { $0.launcher != nil || $0.ui != nil }) { result.insert(.tool) }
+        if !workflows.isEmpty { result.insert(.workflow) }
         return result
     }
 
@@ -40,12 +53,13 @@ public struct PackManifest: Codable, Equatable, Sendable {
         self.icon = icon
         self.actions = actions
         self.uiApiVersion = uiApiVersion
+        self.workflows = []
     }
 
     // MARK: Codable (custom: fill defaults, ignore unknown keys)
 
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, name, author, description, icon, actions, uiApiVersion
+        case schemaVersion, name, author, description, icon, actions, uiApiVersion, workflows
     }
 
     public init(from decoder: Decoder) throws {
@@ -57,6 +71,7 @@ public struct PackManifest: Codable, Equatable, Sendable {
         self.icon = try c.decodeIfPresent(String.self, forKey: .icon) ?? "shippingbox"
         self.actions = try c.decodeIfPresent([PackAction].self, forKey: .actions) ?? []
         self.uiApiVersion = try c.decodeIfPresent(Int.self, forKey: .uiApiVersion)
+        self.workflows = try c.decodeIfPresent([PackWorkflow].self, forKey: .workflows) ?? []
     }
 
     // MARK: Decode entry point
@@ -96,6 +111,11 @@ public struct PackManifest: Codable, Equatable, Sendable {
             throw ValidationError.emptyName
         }
         if actions.isEmpty { throw ValidationError.emptyActions }
+        let actionIDs = Set(actions.map { $0.id })
+        var workflowIDs = Set<String>()
+        for workflow in workflows where workflow.id.isEmpty || !workflowIDs.insert(workflow.id).inserted || workflow.steps.isEmpty || workflow.steps.contains(where: { !actionIDs.contains($0.action) }) {
+            throw ValidationError.invalidUI(id: workflow.id)
+        }
 
         var seen = Set<String>()
         for action in actions {

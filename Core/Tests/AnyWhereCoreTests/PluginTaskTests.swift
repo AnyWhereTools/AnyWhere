@@ -2,6 +2,36 @@ import XCTest
 @testable import AnyWhereCore
 
 final class PluginTaskTests: XCTestCase {
+    func testFinderDirectoryReachesScriptAndRequestWithoutReplacingArguments() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let script = dir.appendingPathComponent("context.zsh")
+        try #"printf '%s\0' "$ANYWHERE_FINDER_PATH" "$1" "$ANYWHERE_PATHS"; cat "$ANYWHERE_REQUEST_FILE""#
+            .write(to: script, atomically: true, encoding: .utf8)
+        for finderPath in [nil, "/tmp/Finder space ' $(touch NEVER)\nfolder"] as [String?] {
+            let original = PluginInvocation(actionID: UUID(), source: .launcher, argument: "typed input", paths: ["selected file"])
+            var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any])
+            json["finderPath"] = finderPath
+            let context = try JSONDecoder().decode(PluginInvocation.self, from: JSONSerialization.data(withJSONObject: json))
+            let result = PluginTask().run(script: script, directory: dir, invocation: context, input: .null,
+                                          environment: ["ANYWHERE_FINDER_PATH": "/wrong"], secrets: [], timeout: 5) { _, _ in }
+            XCTAssertNil(result.error)
+            let output = result.stdout.components(separatedBy: "\0")
+            XCTAssertEqual(output.count, 4)
+            guard output.count == 4 else { continue }
+            let expected = finderPath ?? FileManager.default.homeDirectoryForCurrentUser.path
+            XCTAssertEqual(output[0], expected)
+            XCTAssertEqual(output[1], "selected file")
+            XCTAssertEqual(output[2], "selected file")
+            let request = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(output[3].utf8)) as? [String: Any])
+            let invocation = try XCTUnwrap(request["invocation"] as? [String: Any])
+            XCTAssertEqual(invocation["finderPath"] as? String, expected)
+            XCTAssertEqual(invocation["argument"] as? String, "typed input")
+            XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("NEVER").path))
+        }
+    }
+
     func testEveryByteBoundaryRedactsSecretsAndKeepsUTF8() {
         let source = Data("你好 secret-密钥 世界 secret-密钥!".utf8)
         for boundary in 0...source.count {

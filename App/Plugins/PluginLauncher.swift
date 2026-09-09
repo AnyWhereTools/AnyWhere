@@ -14,14 +14,16 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
     private var window: NSWindow?
     private var hotKey: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
+    private var actionHotKeys: [UUID: (binding: ActionHotKey, reference: EventHotKeyRef, eventID: UInt32)] = [:]
+    private var nextActionEventID: UInt32 = 2
     @Published var query = ""
     @Published var selectedID: String?
     @Published private(set) var focusRequest = UUID()
     @Published var session: PluginSession?
-    private var toolWindows: [UUID: DetachedToolWindowController] = [:]
     @Published var error: String?
     @Published private(set) var shortcutLabel = "⌃⌥Space"
     private var resultCount = 0
+    fileprivate var finderPath = FileManager.default.homeDirectoryForCurrentUser.path
 
     func start() {
         guard eventHandler == nil else { return }
@@ -31,13 +33,22 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
             guard GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil,
                                     MemoryLayout<EventHotKeyID>.size, nil, &identifier) == noErr,
                   identifier.signature == 0x4157504C else { return OSStatus(eventNotHandledErr) }
-            Task { @MainActor in PluginLauncherController.shared.toggle() }; return noErr
+            let eventID = identifier.id
+            Task { @MainActor in
+                let controller = PluginLauncherController.shared
+                if eventID == 1 { controller.toggle() }
+                else if let id = controller.actionHotKeys.first(where: { $0.value.eventID == eventID })?.key {
+                    controller.runUserAction(id)
+                }
+            }
+            return noErr
         }, 1, &type, nil, &eventHandler)
         let prefs = UserDefaults.standard
         let key = prefs.object(forKey: "pluginShortcutKey") as? UInt32 ?? 49
         let modifiers = prefs.object(forKey: "pluginShortcutModifiers") as? UInt32 ?? UInt32(controlKey | optionKey)
         shortcutLabel = prefs.string(forKey: "pluginShortcutLabel") ?? "⌃⌥Space"
         if !prefs.bool(forKey: "pluginShortcutDisabled") { setShortcut(key: key, modifiers: modifiers, label: shortcutLabel) }
+        reloadActionHotKeys()
     }
     func setShortcut(key: UInt32, modifiers: UInt32, label: String) {
         let prefs = UserDefaults.standard
@@ -60,17 +71,74 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
         back()
         if let hotKey { UnregisterEventHotKey(hotKey) }; hotKey = nil
         if let eventHandler { RemoveEventHandler(eventHandler) }; eventHandler = nil
+        for value in actionHotKeys.values { UnregisterEventHotKey(value.reference) }
+        actionHotKeys.removeAll()
     }
-    func hide() { window?.orderOut(nil) }
-    func toggle() { if window?.isKeyWindow == true { hide() } else { show() } }
+
+    func runUserAction(_ id: UUID, query: String = "", argument: String = "") {
+        guard let action = AppState.shared.config.actions.first(where: { $0.id == id && $0.shortcutOnly == true && $0.isEnabled }) else { return }
+        if window?.isKeyWindow != true { finderPath = FinderDirectory.currentPath() }
+        ActionRunner().run(action: action, variant: nil, urls: [], invocation: PluginInvocation(
+            actionID: id, source: .launcher, query: query, argument: argument, finderPath: finderPath))
+        hide()
+    }
+
+    func setActionHotKey(_ binding: ActionHotKey?, actionID: UUID) throws {
+        if let binding {
+            let prefs = UserDefaults.standard
+            let globalKey = prefs.object(forKey: "pluginShortcutKey") as? UInt32 ?? 49
+            let globalModifiers = prefs.object(forKey: "pluginShortcutModifiers") as? UInt32 ?? UInt32(controlKey | optionKey)
+            guard !(binding.key == globalKey && binding.modifiers == globalModifiers),
+                  !AppState.shared.config.actions.contains(where: {
+                      $0.id != actionID && $0.shortcutHotKey?.key == binding.key && $0.shortcutHotKey?.modifiers == binding.modifiers
+                  }) else { throw PluginError(.failed, String(localized: "plugins.shortcutConflict")) }
+            try registerActionHotKey(binding, actionID: actionID)
+        } else if let previous = actionHotKeys.removeValue(forKey: actionID) {
+            UnregisterEventHotKey(previous.reference)
+        }
+        AppState.shared.mutateConfig { config in
+            if let i = config.actions.firstIndex(where: { $0.id == actionID }) { config.actions[i].shortcutHotKey = binding }
+        }
+    }
+
+    private func registerActionHotKey(_ binding: ActionHotKey, actionID: UUID) throws {
+        if actionHotKeys[actionID]?.binding == binding { return }
+        var candidate: EventHotKeyRef?
+        let eventID = nextActionEventID
+        let status = RegisterEventHotKey(binding.key, binding.modifiers,
+            EventHotKeyID(signature: 0x4157504C, id: eventID), GetApplicationEventTarget(), 0, &candidate)
+        guard status == noErr, let candidate else { throw PluginError(.failed, String(localized: "plugins.shortcutConflict")) }
+        nextActionEventID += 1
+        if let previous = actionHotKeys[actionID] { UnregisterEventHotKey(previous.reference) }
+        actionHotKeys[actionID] = (binding, candidate, eventID)
+    }
+
+    func reloadActionHotKeys() {
+        guard eventHandler != nil else { return }
+        let actions = AppState.shared.config.actions.filter { $0.shortcutOnly == true && $0.isEnabled && $0.shortcutHotKey != nil }
+        for id in Array(actionHotKeys.keys) where !actions.contains(where: { $0.id == id }) {
+            if let old = actionHotKeys.removeValue(forKey: id) { UnregisterEventHotKey(old.reference) }
+        }
+        for action in actions {
+            do { try registerActionHotKey(action.shortcutHotKey!, actionID: action.id) }
+            catch { self.error = error.localizedDescription }
+        }
+    }
+    func hide() {
+        window?.orderOut(nil)
+        query = ""
+        selectedID = nil
+    }
+    func toggle() { if window?.isVisible == true { hide() } else { show() } }
     func show() {
+        if window?.isKeyWindow != true { finderPath = FinderDirectory.currentPath() }
         if window == nil {
             let w = LauncherPanel(contentRect: NSRect(x: 0, y: 0, width: 680, height: 74),
                                   styleMask: [.borderless], backing: .buffered, defer: false)
             w.title = String(localized: "plugins.title")
             w.identifier = NSUserInterfaceItemIdentifier("AnyWhere.launcher")
             w.isOpaque = false; w.backgroundColor = .clear; w.hasShadow = true
-            w.level = .floating; w.hidesOnDeactivate = false; w.isMovableByWindowBackground = true
+            w.level = .floating; w.isMovableByWindowBackground = true
             w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             window = w
             w.contentView = NSHostingView(rootView: PluginLauncherView(controller: self, manager: AppState.shared.packManager))
@@ -84,6 +152,8 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
         }
         updateLayout(resultCount: resultCount)
         focusRequest = UUID()
+        // 搜索浮窗点击外部即隐藏；Finder 右键进入插件会话后必须保持可见。
+        window?.hidesOnDeactivate = session == nil
         NSApp.activate(ignoringOtherApps: true); window?.makeKeyAndOrderFront(nil)
     }
     func updateLayout(resultCount: Int) {
@@ -103,7 +173,7 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
         window.setFrame(frame, display: true)
         window.invalidateShadow()
     }
-    func windowShouldClose(_ sender: NSWindow) -> Bool { sender.orderOut(nil); return false }
+    func windowShouldClose(_ sender: NSWindow) -> Bool { hide(); return false }
     func back() {
         session?.close(); session = nil
         focusRequest = UUID()
@@ -127,30 +197,22 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
     func open(_ entry: PluginLauncherEntry, invocation: PluginInvocation? = nil) {
         if session != nil && !confirmSwitch() { return }
         back()
-        let context = invocation ?? PluginInvocation(actionID: entry.id, source: .launcher, query: query)
+        let context = invocation ?? PluginInvocation(actionID: entry.id, source: .launcher, query: query, finderPath: finderPath)
         do { try AppState.shared.packManager.preferences.recordUse(actionID: entry.id) }
         catch { self.error = error.localizedDescription }
         if entry.definition.ui == nil {
             ActionRunner().runLauncher(entry: entry, invocation: context)
         } else {
-            openDetached(entry, invocation: context)
+            session = PluginSession(entry: entry, invocation: context)
+            show()
         }
-    }
-
-    /// Tool actions default to their own window; the launcher remains available for another search.
-    func openDetached(_ entry: PluginLauncherEntry, invocation: PluginInvocation) {
-        let tool = DetachedToolWindowController(entry: entry, invocation: invocation) { [weak self] id in
-            self?.toolWindows.removeValue(forKey: id)
-        }
-        toolWindows[tool.id] = tool
-        tool.show()
-        hide()
     }
     func reload() {
         guard let session else { return }
         let entry = session.entry, context = session.invocation
         back(); open(entry, invocation: PluginInvocation(actionID: context.actionID, source: context.source,
-                                                       query: context.query, argument: context.argument, paths: context.paths, variant: context.variant))
+                                                       query: context.query, argument: context.argument, paths: context.paths,
+                                                       variant: context.variant, finderPath: context.finderPath))
     }
     func validateSession(using manager: PackManager) {
         guard let session else { return }
@@ -158,49 +220,6 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
         let enabled = session.invocation.source == .finder ? current.action.isEnabled && current.definition.contextMenu
             : (try? manager.preferences.isEnabled(actionID: current.id)) == true
         if !enabled { back() }
-    }
-}
-
-@MainActor
-private final class DetachedToolWindowController: NSObject, NSWindowDelegate {
-    let id = UUID()
-    let session: PluginSession
-    private let window: NSPanel
-    private let onClose: (UUID) -> Void
-
-    init(entry: PluginLauncherEntry, invocation: PluginInvocation, onClose: @escaping (UUID) -> Void) {
-        self.session = PluginSession(entry: entry, invocation: invocation)
-        self.onClose = onClose
-        self.window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 680, height: 520),
-                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        super.init()
-        window.title = entry.definition.title
-        window.isReleasedWhenClosed = false
-        window.delegate = self
-        window.minSize = NSSize(width: 520, height: 280)
-        window.contentView = NSHostingView(rootView: DetachedToolView(session: session, close: { [weak self] in self?.close() }))
-    }
-
-    func show() { NSApp.activate(ignoringOtherApps: true); window.center(); window.makeKeyAndOrderFront(nil) }
-    func close() { session.close(); window.orderOut(nil); onClose(id) }
-    func windowShouldClose(_ sender: NSWindow) -> Bool { close(); return false }
-}
-
-private struct DetachedToolView: View {
-    @ObservedObject var session: PluginSession
-    let close: () -> Void
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text(session.entry.definition.title).font(.headline)
-                Spacer()
-                Button(String(localized: "plugins.reload")) { session.webView.reload() }
-                Button(String(localized: "launcher.hide"), action: close)
-            }.padding(12)
-            if let error = session.error { Text(error).font(.caption).foregroundStyle(.red).padding(8) }
-            Divider()
-            PluginWebView(session: session).id(session.id)
-        }
     }
 }
 
@@ -229,8 +248,7 @@ struct PluginLauncherView: View {
     }
     private var results: [Result] {
         let plugins = PluginSearch.matches(query: controller.query, entries: entries, recent: recent, keywordsOnly: true)
-        if !plugins.isEmpty { return plugins.map(Result.plugin) }
-        return ApplicationSearch.matches(query: controller.query, apps: apps).map(Result.application)
+        return plugins.map(Result.plugin) + ApplicationSearch.matches(query: controller.query, apps: apps).map(Result.application)
     }
     private var hasQuery: Bool { !controller.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
@@ -239,9 +257,14 @@ struct PluginLauncherView: View {
         controller.selectedID = result.id
         switch result {
         case .plugin(let match):
+            if AppState.shared.config.actions.contains(where: { $0.id == match.entry.id && $0.shortcutOnly == true }) {
+                controller.runUserAction(match.entry.id, query: controller.query, argument: match.argument)
+                return
+            }
             guard let entry = manager.launcherEntries().first(where: { $0.id == match.entry.id }) else { reloadEntries(); return }
             controller.open(entry, invocation: PluginInvocation(actionID: entry.id, source: .launcher,
-                                                               query: controller.query, argument: match.argument))
+                                                               query: controller.query, argument: match.argument,
+                                                               finderPath: controller.finderPath))
         case .application(let app):
             controller.hide()
             NSWorkspace.shared.openApplication(at: app.url, configuration: .init()) { _, error in
@@ -265,7 +288,8 @@ struct PluginLauncherView: View {
                 HStack(spacing: 16) {
                     Image(systemName: "magnifyingglass").font(.system(size: 26, weight: .regular)).foregroundStyle(.secondary)
                     PluginSearchField(text: $controller.query, focusRequest: controller.focusRequest,
-                                      onSubmit: { launch(controller.selectedID) }, onMove: move, onEscape: { controller.hide() })
+                                      onSubmit: { launch(controller.selectedID) }, onMove: move,
+                                      onEscape: { controller.hide() })
                         .frame(height: 34)
                     if !controller.query.isEmpty {
                         Button { controller.query = "" } label: {
@@ -305,7 +329,14 @@ struct PluginLauncherView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.regularMaterial)
+        .background {
+            let shape = RoundedRectangle(cornerRadius: hasQuery || controller.session != nil ? 24 : 37)
+            if #available(macOS 26, *) {
+                shape.fill(.clear).glassEffect(in: shape)
+            } else {
+                shape.fill(.regularMaterial)
+            }
+        }
         .clipShape(RoundedRectangle(cornerRadius: hasQuery || controller.session != nil ? 24 : 37))
         .overlay(RoundedRectangle(cornerRadius: hasQuery || controller.session != nil ? 24 : 37)
             .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5))
@@ -329,8 +360,8 @@ struct PluginLauncherView: View {
             HStack(spacing: 14) {
                 switch result {
                 case .plugin(let match):
-                    if let entry = manager.launcherEntry(actionID: match.entry.id) {
-                        ActionIconView(icon: entry.action.icon, size: 38)
+                    if let action = AppState.shared.config.actions.first(where: { $0.id == match.entry.id }) {
+                        ActionIconView(icon: action.icon, size: 38)
                     }
                 case .application(let app):
                     Image(nsImage: NSWorkspace.shared.icon(forFile: app.url.path)).resizable().frame(width: 38, height: 38)
@@ -372,24 +403,6 @@ struct PluginLauncherView: View {
     }
 }
 
-private struct PluginSessionView: View {
-    @ObservedObject var session: PluginSession
-    @ObservedObject var controller: PluginLauncherController
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Button(String(localized: "plugins.back")) { controller.back() }
-                Text(session.entry.definition.title).font(.headline); Spacer()
-                Button(String(localized: "plugins.reload")) { controller.reload() }
-                Button { controller.hide() } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.plain).accessibilityLabel(String(localized: "launcher.hide"))
-            }.padding(12)
-            if let error = session.error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled).padding(8) }
-            Divider(); PluginWebView(session: session).id(session.id)
-        }
-    }
-}
-
 private struct PluginSearchField: NSViewRepresentable {
     @Binding var text: String
     let focusRequest: UUID
@@ -398,9 +411,14 @@ private struct PluginSearchField: NSViewRepresentable {
     let onEscape: () -> Void
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeNSView(context: Context) -> NSTextField {
-        let field = NSTextField(); field.placeholderString = String(localized: "plugins.search"); field.delegate = context.coordinator
-        field.isBordered = false; field.drawsBackground = false; field.focusRingType = .none
-        field.font = .systemFont(ofSize: 24); field.setAccessibilityLabel(String(localized: "plugins.search"))
+        let field = NSTextField()
+        field.placeholderString = String(localized: "plugins.search")
+        field.delegate = context.coordinator
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.font = .systemFont(ofSize: 24)
+        field.setAccessibilityLabel(String(localized: "plugins.search"))
         return field
     }
     func updateNSView(_ field: NSTextField, context: Context) {
@@ -415,7 +433,9 @@ private struct PluginSearchField: NSViewRepresentable {
         var parent: PluginSearchField
         var focusRequest: UUID?
         init(_ parent: PluginSearchField) { self.parent = parent }
-        func controlTextDidChange(_ notification: Notification) { parent.text = (notification.object as? NSTextField)?.stringValue ?? "" }
+        func controlTextDidChange(_ notification: Notification) {
+            parent.text = (notification.object as? NSTextField)?.stringValue ?? ""
+        }
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
             guard !textView.hasMarkedText() else { return false }
             switch commandSelector {
@@ -426,6 +446,24 @@ private struct PluginSearchField: NSViewRepresentable {
             default: return false
             }
             return true
+        }
+    }
+}
+
+private struct PluginSessionView: View {
+    @ObservedObject var session: PluginSession
+    @ObservedObject var controller: PluginLauncherController
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button(String(localized: "plugins.back")) { controller.back() }
+                Text(session.entry.definition.title).font(.headline); Spacer()
+                Button(String(localized: "plugins.reload")) { controller.reload() }
+                Button { controller.hide() } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.plain).accessibilityLabel(String(localized: "launcher.hide"))
+            }.padding(12)
+            if let error = session.error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled).padding(8) }
+            Divider(); PluginWebView(session: session).id(session.id)
         }
     }
 }
@@ -452,11 +490,33 @@ private struct ShortcutRecorder: NSViewRepresentable {
     func updateNSView(_ button: Recorder, context: Context) { if !button.recording { button.title = label } }
     final class Recorder: NSButton {
         var recording = false
+        private var monitor: Any?
         override var acceptsFirstResponder: Bool { true }
-        @objc func record() { recording = true; title = String(localized: "plugins.pressShortcut"); window?.makeFirstResponder(self) }
+        @objc func record() {
+            guard !recording else { return }
+            recording = true; title = String(localized: "plugins.pressShortcut"); window?.makeFirstResponder(self)
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self, self.recording else { return event }
+                guard self.window?.isKeyWindow == true, self.window?.firstResponder === self else {
+                    self.endRecording()
+                    return event
+                }
+                self.keyDown(with: event)
+                return nil
+            }
+        }
+        override func viewWillMove(toWindow newWindow: NSWindow?) {
+            if newWindow == nil { endRecording() }
+            super.viewWillMove(toWindow: newWindow)
+        }
+        private func endRecording() {
+            recording = false
+            if let monitor { NSEvent.removeMonitor(monitor); self.monitor = nil }
+            title = PluginLauncherController.shared.shortcutLabel
+        }
         override func keyDown(with event: NSEvent) {
             guard recording else { super.keyDown(with: event); return }
-            if event.keyCode == 53 { recording = false; title = PluginLauncherController.shared.shortcutLabel; return }
+            if event.keyCode == 53 { endRecording(); return }
             let flags = event.modifierFlags
             guard flags.contains(.control) || flags.contains(.option) || flags.contains(.command) else { return }
             var modifiers: UInt32 = 0, label = ""
@@ -465,7 +525,8 @@ private struct ShortcutRecorder: NSViewRepresentable {
             }
             label += event.keyCode == 49 ? "Space" : (event.charactersIgnoringModifiers ?? "").uppercased()
             PluginLauncherController.shared.setShortcut(key: UInt32(event.keyCode), modifiers: modifiers, label: label)
-            recording = false; title = PluginLauncherController.shared.shortcutLabel
+            endRecording()
         }
+        deinit { if let monitor { NSEvent.removeMonitor(monitor) } }
     }
 }

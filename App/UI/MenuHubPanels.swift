@@ -97,6 +97,7 @@ struct PvEditor: View {
     }
 
     private var subtitle: String {
+        if action.shortcutOnly == true { return String(localized: "settings.tab.shortcuts") }
         let placeText = placementChoice == 1 ? String(localized: "editor.placeSubmenuShort") : String(localized: "editor.placeTopLevelShort")
         return action.presetKey != nil
             ? String(format: String(localized: "editor.subtitleFactoryPreset"), placeText)
@@ -177,6 +178,7 @@ struct PvEditor: View {
                     }
                 }
 
+                if action.shortcutOnly != true {
                 PvField(String(localized: "editor.target")) {
                     targetPopup
                 }
@@ -247,6 +249,7 @@ struct PvEditor: View {
                         AWField($variantsDir, mono: true, width: 200)
                             .onChange(of: variantsDir) { _ in commit() }
                     }
+                }
                 }
                 if kindChoice < 2 {
                     PvField(String(localized: "editor.timeout")) {

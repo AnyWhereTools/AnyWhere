@@ -15,7 +15,7 @@ final class PluginSessionTests: XCTestCase {
         let action = MenuAction(id: id, title: "UI", icon: .symbol("bolt"), kind: .openPluginUI,
                                 matching: MatchRule(), placement: .topLevel, packID: packKey, isEnabled: true, sortOrder: 0)
         let entry = PluginLauncherEntry(id: id, action: action, definition: manifest.actions[0], directory: root)
-        let context = PluginInvocation(actionID: id, source: .launcher, query: "UI hello", argument: "hello")
+        let context = PluginInvocation(actionID: id, source: .launcher, query: "UI hello", argument: "hello", finderPath: root.path)
         let session = PluginSession(entry: entry, invocation: context)
         defer { session.close(); try? FileManager.default.removeItem(at: PackManager.dataDirectory(packKey)) }
         for _ in 0..<100 {
@@ -25,6 +25,8 @@ final class PluginSessionTests: XCTestCase {
         XCTAssertNil(session.error)
         let argument = try await session.webView.callAsyncJavaScript("return (await anywhere.getInvocation()).argument", arguments: [:], in: nil, contentWorld: .page)
         XCTAssertEqual(argument as? String, "hello")
+        let finderPath = try await session.webView.callAsyncJavaScript("return (await anywhere.getInvocation()).finderPath", arguments: [:], in: nil, contentWorld: .page)
+        XCTAssertEqual(finderPath as? String, root.path)
         let stored = try await session.webView.callAsyncJavaScript("await anywhere.storage.set('key', false); return await anywhere.storage.get('key')", arguments: [:], in: nil, contentWorld: .page)
         XCTAssertEqual(stored as? Bool, false)
         let denied = try await session.webView.callAsyncJavaScript("try { await anywhere.clipboard.writeText('not permitted'); } catch(e) { return e.code; }", arguments: [:], in: nil, contentWorld: .page)

@@ -71,6 +71,7 @@ final class AppState: ObservableObject {
         configError = nil
         pruneOrphanIcons()
         pushSnapshot()
+        PluginLauncherController.shared.reloadActionHotKeys()
     }
 
     /// 增量改动入口:先吸收外部(AI/CLI/手动)对 config.json 的改动,再在【最新】配置上施加本次改动并落盘。

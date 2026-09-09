@@ -100,6 +100,7 @@ public final class PluginTask: @unchecked Sendable {
             env["ANYWHERE_PATHS"] = invocation.paths.joined(separator: "\n")
             env["ANYWHERE_VARIANT"] = invocation.variant ?? ""
             env["ANYWHERE_REQUEST_FILE"] = request.path
+            env["ANYWHERE_FINDER_PATH"] = invocation.finderPath
             process.environment = env
             process.standardInput = FileHandle.nullDevice
             process.standardOutput = stdout; process.standardError = stderr

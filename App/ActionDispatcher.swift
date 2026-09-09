@@ -22,7 +22,8 @@ final class ActionDispatcher {
         if action.kind == .openPluginUI,
            let entry = AppState.shared.packManager.launcherEntry(actionID: action.id) {
             PluginLauncherController.shared.open(entry, invocation: PluginInvocation(
-                actionID: action.id, source: .finder, paths: request.paths, variant: request.variant))
+                actionID: action.id, source: .finder, paths: request.paths, variant: request.variant,
+                finderPath: ActionRunner.workingDirectory(for: urls)?.path ?? FileManager.default.homeDirectoryForCurrentUser.path))
             return
         }
         runner.run(action: action, variant: request.variant, urls: urls)

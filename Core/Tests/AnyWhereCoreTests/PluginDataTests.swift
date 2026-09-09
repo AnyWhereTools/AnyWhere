@@ -24,6 +24,9 @@ final class PluginDataTests: XCTestCase {
         XCTAssertEqual(try p.searchEntries([a, b]), loaded)
         let updated = PluginSearchEntry(id: a.id, title: "Updated pack", keywords: ["new"])
         XCTAssertEqual(try p.searchEntries([updated]).first?.keywords, ["XM"])
+        try p.removeShortcut(actionID: a.id)
+        XCTAssertEqual(try p.searchEntries([a, b]), [a, b])
+        try p.setShortcut(.init(title: "日志解密", keywords: ["XM"]), actionID: a.id, defaults: [a, b])
         try p.removePack(packKey: "xlog")
         XCTAssertEqual(try p.searchEntries([a, b]), [a, b])
     }

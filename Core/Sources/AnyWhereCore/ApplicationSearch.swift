@@ -36,10 +36,19 @@ public enum ApplicationSearch {
     public static func matches(query: String, apps: [ApplicationSearchEntry]) -> [ApplicationSearchEntry] {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return [] }
+        func forms(_ value: String) -> [String] {
+            let source = NSMutableString(string: value) as CFMutableString
+            CFStringTransform(source, nil, "Any-Latin; Latin-ASCII" as CFString, false)
+            let latin = (source as String).lowercased()
+            let initials = latin.split { $0 == " " || $0 == "-" || $0 == "_" }.compactMap(\.first)
+            return [value.lowercased(), latin.replacingOccurrences(of: " ", with: ""), String(initials)]
+        }
         func rank(_ name: String) -> Int? {
-            if name.compare(query, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame { return 0 }
-            if name.range(of: query, options: [.anchored, .caseInsensitive, .diacriticInsensitive]) != nil { return 1 }
-            return name.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) == nil ? nil : 2
+            let query = query.lowercased()
+            let values = forms(name)
+            if values.contains(where: { $0 == query }) { return 0 }
+            if values.contains(where: { $0.hasPrefix(query) }) { return 1 }
+            return values.contains(where: { $0.contains(query) }) ? 2 : nil
         }
         return apps.compactMap { app -> (ApplicationSearchEntry, Int)? in
             let ranks = [app.name, app.url.deletingPathExtension().lastPathComponent].compactMap(rank)

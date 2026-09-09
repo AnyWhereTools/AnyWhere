@@ -136,16 +136,29 @@ public struct MenuAction: Codable, Identifiable, Equatable, Sendable {
     public var iconHue: String?       // 用户自定义图标配色(AppIconHue 原值);nil=按来源/类型派生。仅影响 App 内预览,Finder 菜单图标为单色 SF Symbol
     public var isEnabled: Bool
     public var sortOrder: Int
+    /// 用户自建快捷指令只在快捷启动器出现，不推送到 Finder 菜单。
+    public var shortcutOnly: Bool?
+    public var shortcutHotKey: ActionHotKey?
 
     public init(id: UUID, title: String, icon: IconSpec, kind: Kind, matching: MatchRule,
                 placement: Placement, variants: VariantSource? = nil, presetKey: String? = nil,
                 packID: String? = nil, packRepo: String? = nil, iconHue: String? = nil,
-                isEnabled: Bool, sortOrder: Int) {
+                isEnabled: Bool, sortOrder: Int, shortcutOnly: Bool? = nil, shortcutHotKey: ActionHotKey? = nil) {
         self.id = id; self.title = title; self.icon = icon; self.kind = kind
         self.matching = matching; self.placement = placement
         self.variants = variants; self.presetKey = presetKey
         self.packID = packID; self.packRepo = packRepo; self.iconHue = iconHue
         self.isEnabled = isEnabled; self.sortOrder = sortOrder
+        self.shortcutOnly = shortcutOnly; self.shortcutHotKey = shortcutHotKey
+    }
+}
+
+public struct ActionHotKey: Codable, Equatable, Sendable {
+    public let key: UInt32
+    public let modifiers: UInt32
+    public let label: String
+    public init(key: UInt32, modifiers: UInt32, label: String) {
+        self.key = key; self.modifiers = modifiers; self.label = label
     }
 }
 

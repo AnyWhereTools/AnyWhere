@@ -2,6 +2,21 @@ import XCTest
 @testable import AnyWhereCore
 
 final class ModelsTests: XCTestCase {
+    func testUserShortcutRoundTripAndLegacyMenuDefaults() throws {
+        var action = MenuConfig.defaultSeed().actions[0]
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(action)) as? [String: Any])
+        legacy.removeValue(forKey: "shortcutOnly")
+        legacy.removeValue(forKey: "shortcutHotKey")
+        let old = try JSONDecoder().decode(MenuAction.self, from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertNil(old.shortcutOnly)
+        XCTAssertNil(old.shortcutHotKey)
+        action.shortcutOnly = true
+        action.shortcutHotKey = ActionHotKey(key: 18, modifiers: 6144, label: "⌃⌥1")
+        let restored = try JSONDecoder().decode(MenuAction.self, from: JSONEncoder().encode(action))
+        XCTAssertTrue(restored.shortcutOnly == true)
+        XCTAssertEqual(restored.shortcutHotKey, ActionHotKey(key: 18, modifiers: 6144, label: "⌃⌥1"))
+        XCTAssertEqual(restored.kind, action.kind)
+    }
     func testRoundTripAllKinds() throws {
         let actions = [
             MenuAction(id: UUID(), title: "跑脚本", icon: .symbol("terminal"),

@@ -26,6 +26,13 @@ public final class PluginPreferencesStore {
     public func isEnabled(actionID: UUID) throws -> Bool { try file.read().enabled[actionID.uuidString] ?? false }
     public func setEnabled(_ enabled: Bool, actionID: UUID) throws { try file.update { $0.enabled[actionID.uuidString] = enabled } }
     public func recent() throws -> [UUID] { try file.read().recent.compactMap(UUID.init(uuidString:)) }
+    public func removeShortcut(actionID: UUID) throws {
+        try file.update {
+            $0.shortcuts?.removeValue(forKey: actionID.uuidString)
+            $0.enabled.removeValue(forKey: actionID.uuidString)
+            $0.recent.removeAll { $0 == actionID.uuidString }
+        }
+    }
     public func searchEntries(_ defaults: [PluginSearchEntry]) throws -> [PluginSearchEntry] {
         let overrides = try file.read().shortcuts ?? [:]
         return defaults.map { entry in

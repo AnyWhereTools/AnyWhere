@@ -35,10 +35,26 @@ public struct PluginInvocation: Codable, Equatable, Sendable {
     public let argument: String
     public let paths: [String]
     public let variant: String?
+    public let finderPath: String
+    private enum CodingKeys: String, CodingKey { case apiVersion, invocationID, actionID, source, query, argument, paths, variant, finderPath }
     public init(actionID: UUID, source: Source, query: String = "", argument: String = "",
-                paths: [String] = [], variant: String? = nil) {
+                paths: [String] = [], variant: String? = nil,
+                finderPath: String = FileManager.default.homeDirectoryForCurrentUser.path) {
         apiVersion = 1; invocationID = UUID(); self.actionID = actionID; self.source = source
-        self.query = query; self.argument = argument; self.paths = paths; self.variant = variant
+        self.query = query; self.argument = argument; self.paths = paths; self.variant = variant; self.finderPath = finderPath
+    }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        apiVersion = try c.decode(Int.self, forKey: .apiVersion)
+        invocationID = try c.decode(UUID.self, forKey: .invocationID)
+        actionID = try c.decode(UUID.self, forKey: .actionID)
+        source = try c.decode(Source.self, forKey: .source)
+        query = try c.decode(String.self, forKey: .query)
+        argument = try c.decode(String.self, forKey: .argument)
+        paths = try c.decode([String].self, forKey: .paths)
+        variant = try c.decodeIfPresent(String.self, forKey: .variant)
+        finderPath = try c.decodeIfPresent(String.self, forKey: .finderPath)
+            ?? FileManager.default.homeDirectoryForCurrentUser.path
     }
 }
 

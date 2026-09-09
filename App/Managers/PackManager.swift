@@ -255,15 +255,16 @@ final class PackManager: ObservableObject {
     }
 
     func shortcutEntries(includeDisabled: Bool = false) throws -> [PluginSearchEntry] {
-        try preferences.searchEntries(launcherEntries(includeDisabled: includeDisabled).map {
+        let installed = try preferences.searchEntries(launcherEntries(includeDisabled: includeDisabled).map {
             PluginSearchEntry(id: $0.id, title: $0.definition.title, keywords: $0.definition.launcher?.keywords ?? [])
         })
+        let local = appState().config.actions.filter { $0.shortcutOnly == true && (includeDisabled || $0.isEnabled) }
+        let configured = try preferences.searchEntries(local.map { PluginSearchEntry(id: $0.id, title: $0.title, keywords: []) })
+        return zip(local, configured).map { PluginSearchEntry(id: $0.0.id, title: $0.0.title, keywords: $0.1.keywords) } + installed
     }
 
     func setShortcut(_ shortcut: PluginShortcut, actionID: UUID) throws {
-        let defaults = launcherEntries(includeDisabled: true).map {
-            PluginSearchEntry(id: $0.id, title: $0.definition.title, keywords: $0.definition.launcher?.keywords ?? [])
-        }
+        let defaults = try shortcutEntries(includeDisabled: true)
         try preferences.setShortcut(shortcut, actionID: actionID, defaults: defaults)
         reload()
     }
@@ -281,6 +282,7 @@ final class PackManager: ObservableObject {
     }
 
     func appearsInContextMenu(_ action: MenuAction) -> Bool {
+        guard action.shortcutOnly != true else { return false }
         guard let key = action.packID,
               let pack = packs.first(where: { $0.key == key }),
               let definition = pack.manifest.actions.first(where: {

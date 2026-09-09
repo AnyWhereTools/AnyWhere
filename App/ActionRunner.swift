@@ -59,12 +59,23 @@ final class ActionRunner: ActionRunning {
 
     @MainActor
     func run(action: MenuAction, variant: String?, urls: [URL]) {
+        run(action: action, variant: variant, urls: urls, invocation: nil)
+    }
+
+    @MainActor
+    func run(action: MenuAction, variant: String?, urls: [URL], invocation: PluginInvocation?) {
         let title = action.title
         let kind = action.kind
-        let paths = urls.map(\.path)
+        // Treat launcher input as one literal argument; never interpolate it into shell source.
+        let paths = invocation.map { $0.argument.isEmpty ? [] : [$0.argument] } ?? urls.map(\.path)
         let cwd = Self.workingDirectory(for: urls)
         let scriptBase = AppPaths.configDirectory()
-        let extraEnv = Self.contractEnv()
+        var extraEnv = Self.contractEnv()
+        extraEnv["ANYWHERE_FINDER_PATH"] = invocation?.finderPath ?? cwd?.path ?? FileManager.default.homeDirectoryForCurrentUser.path
+        if let invocation {
+            extraEnv["ANYWHERE_QUERY"] = invocation.query
+            extraEnv["ANYWHERE_ARGUMENT"] = invocation.argument
+        }
         let fields = AppState.shared.packManager.configurationFields(for: action)
         let actionID = action.id
 
