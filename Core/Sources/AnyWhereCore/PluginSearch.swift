@@ -40,6 +40,13 @@ public enum PluginSearch {
                 if key.range(of: query, options: .caseInsensitive) != nil {
                     return Candidate(match: .init(entry: entry, argument: ""), rank: 2, prefixLength: 0)
                 }
+                let forms = SearchText.forms(key).dropFirst()
+                if forms.contains(where: { $0.hasPrefix(query.lowercased()) }) {
+                    return Candidate(match: .init(entry: entry, argument: ""), rank: 3, prefixLength: 0)
+                }
+                if forms.contains(where: { $0.contains(query.lowercased()) }) {
+                    return Candidate(match: .init(entry: entry, argument: ""), rank: 4, prefixLength: 0)
+                }
                 return nil
             }.sorted { $0.rank == $1.rank ? $0.prefixLength > $1.prefixLength : $0.rank < $1.rank }.first
         }

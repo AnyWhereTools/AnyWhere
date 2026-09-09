@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 4,
+  "uiApiVersion": 1,
+  "name": "接口响应工具链",
+  "author": "AnyWhere",
+  "description": "A 提取 JSON → B 选择数据节点 → C 生成 TypeScript；三个工具可独立使用，也可串联。",
+  "icon": "point.3.connected.trianglepath.dotted",
+  "actions": [
+    {"id":"extract","title":"JSON 提取器","icon":"doc.text.magnifyingglass","contextMenu":false,"ui":{"entry":"extract.html","height":570},"launcher":{"keywords":["extract json"]},"capabilities":["clipboard.write"]},
+    {"id":"select","title":"JSON 节点选择器","icon":"list.bullet.indent","contextMenu":false,"ui":{"entry":"select.html","height":570},"launcher":{"keywords":["select json"]},"capabilities":["clipboard.write"]},
+    {"id":"types","title":"JSON 转 TypeScript","icon":"curlybraces","contextMenu":false,"ui":{"entry":"types.html","height":570},"launcher":{"keywords":["json ts"]},"capabilities":["clipboard.write"]}
+  ],
+  "workflows": [
+    {"id":"response-types","title":"接口响应 → TypeScript","steps":[{"action":"extract"},{"action":"select"},{"action":"types"}]}
+  ]
+}

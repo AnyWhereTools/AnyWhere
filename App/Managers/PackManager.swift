@@ -216,8 +216,9 @@ final class PackManager: ObservableObject {
                             packDir: dest, sortOrder: baseOrder + offset)
         }
         config.actions.append(contentsOf: newActions)
-        try preferences.rememberActions(packKey: cloned.key, ids: Set(newActions.map(\.id)))
-        for action in newActions { try preferences.setEnabled(false, actionID: action.id) }
+        let importedIDs = Set(newActions.map(\.id) + cloned.manifest.workflows.map { Self.workflowUUID(packKey: cloned.key, workflowID: $0.id) })
+        try preferences.rememberActions(packKey: cloned.key, ids: importedIDs)
+        for id in importedIDs { try preferences.setEnabled(false, actionID: id) }
 
         // Persist installed.json BEFORE update() so reload() sees the record.
         var records = Self.loadInstalled().filter { $0.key != cloned.key }
@@ -261,6 +262,49 @@ final class PackManager: ObservableObject {
         let local = appState().config.actions.filter { $0.shortcutOnly == true && (includeDisabled || $0.isEnabled) }
         let configured = try preferences.searchEntries(local.map { PluginSearchEntry(id: $0.id, title: $0.title, keywords: []) })
         return zip(local, configured).map { PluginSearchEntry(id: $0.0.id, title: $0.0.title, keywords: $0.1.keywords) } + installed
+    }
+
+    nonisolated static func workflowUUID(packKey: String, workflowID: String) -> UUID {
+        actionUUID(packKey: "workflow:" + packKey, packActionID: workflowID)
+    }
+
+    func workflowEntry(packKey: String, workflowID: String) -> LauncherWorkflowEntry? {
+        guard let pack = packs.first(where: { $0.key == packKey }),
+              let definition = pack.manifest.workflows.first(where: { $0.id == workflowID }) else { return nil }
+        return LauncherWorkflowEntry(pack: pack, definition: definition, directory: Self.packDir(packKey))
+    }
+
+    func launcherCatalog() throws -> LauncherCatalog {
+        let shortcuts = try shortcutEntries()
+        var entries = launcherEntries().compactMap { plugin -> LauncherEntry? in
+            guard let search = shortcuts.first(where: { $0.id == plugin.id }) else { return nil }
+            let pack = packs.first { $0.key == plugin.action.packID }
+            return LauncherEntry(search: search, subtitle: pack?.manifest.description ?? pack?.manifest.name ?? "",
+                                 target: .plugin(plugin))
+        }
+        entries += appState().config.actions.filter { $0.shortcutOnly == true && $0.isEnabled }.compactMap { action in
+            guard let search = shortcuts.first(where: { $0.id == action.id }) else { return nil }
+            return LauncherEntry(search: search, subtitle: "", target: .action(action))
+        }
+        for pack in packs {
+            for definition in pack.manifest.workflows {
+                guard let workflow = workflowEntry(packKey: pack.key, workflowID: definition.id),
+                      try preferences.isEnabled(actionID: workflow.id) else { continue }
+                entries.append(LauncherEntry(search: PluginSearchEntry(id: workflow.id, title: definition.title, keywords: []),
+                                             subtitle: pack.manifest.description ?? pack.manifest.name, target: .workflow(workflow)))
+            }
+        }
+        return LauncherCatalog(entries: entries)
+    }
+
+    func setWorkflowEnabled(_ enabled: Bool, packKey: String, workflowID: String) throws {
+        guard let entry = workflowEntry(packKey: packKey, workflowID: workflowID) else { return }
+        if !enabled, !PluginLauncherController.shared.endWorkflow(id: entry.id) {
+            throw PluginError(.busy, String(localized: "plugins.taskStopFailed"))
+        }
+        try preferences.rememberActions(packKey: packKey, ids: [entry.id])
+        try preferences.setEnabled(enabled, actionID: entry.id)
+        reload()
     }
 
     func setShortcut(_ shortcut: PluginShortcut, actionID: UUID) throws {
@@ -318,7 +362,8 @@ final class PackManager: ObservableObject {
 
     func uninstall(_ key: String, clearData: Bool = false) throws {
         guard PluginLauncherController.shared.endSession(packKey: key) else { throw PluginError(.busy, String(localized: "plugins.taskStopFailed")) }
-        let currentIDs = Set(appState().config.actions.filter { $0.packID == key }.map(\.id))
+        let currentIDs = Set(appState().config.actions.filter { $0.packID == key }.map(\.id) +
+            (packs.first { $0.key == key }?.manifest.workflows.map { Self.workflowUUID(packKey: key, workflowID: $0.id) } ?? []))
         guard ActionRunner.cancelLauncherTasks(actionIDs: currentIDs) else { throw PluginError(.busy, String(localized: "plugins.taskStopFailed")) }
         try preferences.rememberActions(packKey: key, ids: currentIDs)
         if clearData {
@@ -399,7 +444,8 @@ final class PackManager: ObservableObject {
         guard PluginLauncherController.shared.endSession(packKey: key, confirm: true) else {
             throw PluginError(.cancelled, String(localized: "plugins.updateCancelled"))
         }
-        let currentIDs = Set(appState().config.actions.filter { $0.packID == key }.map(\.id))
+        let currentIDs = Set(appState().config.actions.filter { $0.packID == key }.map(\.id) +
+            (packs.first { $0.key == key }?.manifest.workflows.map { Self.workflowUUID(packKey: key, workflowID: $0.id) } ?? []))
         guard ActionRunner.cancelLauncherTasks(actionIDs: currentIDs) else { throw PluginError(.busy, String(localized: "plugins.taskStopFailed")) }
         let fm = FileManager.default
         let dest = Self.packDir(key)
@@ -444,6 +490,19 @@ final class PackManager: ObservableObject {
                     try preferences.setEnabled(false, actionID: Self.actionUUID(packKey: key, packActionID: definition.id))
                 }
             }
+            let workflowIDs = Set(update.newManifest.workflows.map { Self.workflowUUID(packKey: key, workflowID: $0.id) })
+            try preferences.rememberActions(packKey: key, ids: workflowIDs)
+            for workflow in update.newManifest.workflows {
+                let changed = oldManifest?.workflows.first { $0.id == workflow.id } != workflow
+                let increasedCapabilities = workflow.steps.contains { step in
+                    let old = oldManifest?.actions.first { $0.id == step.action }
+                    let new = update.newManifest.actions.first { $0.id == step.action }
+                    return !Set(new?.capabilities ?? []).isSubset(of: Set(old?.capabilities ?? []))
+                }
+                if changed || increasedCapabilities {
+                    try preferences.setEnabled(false, actionID: Self.workflowUUID(packKey: key, workflowID: workflow.id))
+                }
+            }
 
         // Update installed.json (new SHA + manifest snapshot).
         var records = Self.loadInstalled().filter { $0.key != key }
@@ -469,7 +528,7 @@ final class PackManager: ObservableObject {
 
     /// Deterministic UUID for a pack action so enabled-state survives updates and
     /// snapshot rebuilds: derived from packKey + PackAction.id.
-    static func actionUUID(packKey: String, packActionID: String) -> UUID {
+    nonisolated static func actionUUID(packKey: String, packActionID: String) -> UUID {
         PluginActionIdentity.uuid(packKey: packKey, actionID: packActionID)
     }
 

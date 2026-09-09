@@ -20,6 +20,17 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
     @Published var selectedID: String?
     @Published private(set) var focusRequest = UUID()
     @Published var session: PluginSession?
+    @Published private(set) var workflow: LauncherWorkflowEntry?
+    @Published private(set) var workflowRunning = false
+    @Published private(set) var workflowOutput = ""
+    @Published private(set) var workflowStepIndex = 0
+    private var workflowInput: JSONValue = .null
+    private var workflowRun: LauncherWorkflowRun?
+    private var workflowInvocation: PluginInvocation?
+    private var executionID = UUID()
+    private var retryAction: (() -> Void)?
+    enum PanelState { case search, tool, workflowResult }
+    var panelState: PanelState { session != nil ? .tool : workflow != nil ? .workflowResult : .search }
     @Published var error: String?
     @Published private(set) var shortcutLabel = "⌃⌥Space"
     private var resultCount = 0
@@ -67,7 +78,7 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
         UserDefaults.standard.set(true, forKey: "pluginShortcutDisabled"); objectWillChange.send()
     }
     func stop() {
-        _ = session?.close(waitForTask: true)
+        _ = ToolWorkspaceController.shared.close()
         back()
         if let hotKey { UnregisterEventHotKey(hotKey) }; hotKey = nil
         if let eventHandler { RemoveEventHandler(eventHandler) }; eventHandler = nil
@@ -78,9 +89,14 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
     func runUserAction(_ id: UUID, query: String = "", argument: String = "") {
         guard let action = AppState.shared.config.actions.first(where: { $0.id == id && $0.shortcutOnly == true && $0.isEnabled }) else { return }
         if window?.isKeyWindow != true { finderPath = FinderDirectory.currentPath() }
+        try? AppState.shared.packManager.preferences.recordUse(actionID: id)
+        retryAction = { [weak self] in self?.runUserAction(id, query: query, argument: argument) }
+        let token = UUID(); executionID = token; error = nil
         ActionRunner().run(action: action, variant: nil, urls: [], invocation: PluginInvocation(
-            actionID: id, source: .launcher, query: query, argument: argument, finderPath: finderPath))
-        hide()
+            actionID: id, source: .launcher, query: query, argument: argument, finderPath: finderPath)) { [weak self] outcome in
+                guard let self, self.executionID == token else { return }
+                if case .failure(let message) = outcome { self.error = message; self.show() }
+            }
     }
 
     func setActionHotKey(_ binding: ActionHotKey?, actionID: UUID) throws {
@@ -125,6 +141,8 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
         }
     }
     func hide() {
+        back()
+        guard panelState == .search else { return }
         window?.orderOut(nil)
         query = ""
         selectedID = nil
@@ -153,20 +171,19 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
         updateLayout(resultCount: resultCount)
         focusRequest = UUID()
         // 搜索浮窗点击外部即隐藏；Finder 右键进入插件会话后必须保持可见。
-        window?.hidesOnDeactivate = session == nil
+        window?.hidesOnDeactivate = panelState == .search
         NSApp.activate(ignoringOtherApps: true); window?.makeKeyAndOrderFront(nil)
     }
     func updateLayout(resultCount: Int) {
         self.resultCount = resultCount
         guard let window else { return }
         let area = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? window.frame
-        let hasQuery = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let searchHeight: CGFloat = hasQuery ? 74 + CGFloat(max(1, min(resultCount, 7))) * 64 + 44 : 74
+        let searchHeight: CGFloat = 74 + CGFloat(max(1, min(resultCount, 7))) * 64 + 66
         let height = min(CGFloat(session?.entry.definition.ui?.height ?? 460) + 56, area.height - 40)
-        let size = NSSize(width: min(session == nil ? 680 : max(680, window.frame.width), area.width - 40),
-                          height: min((session == nil ? searchHeight : height) + (error == nil ? 0 : 44), area.height - 40))
-        window.minSize = session == nil ? NSSize(width: 420, height: 74) : NSSize(width: 520, height: 280)
-        if session == nil { window.styleMask.remove(.resizable) } else { window.styleMask.insert(.resizable) }
+        let size = NSSize(width: min(panelState == .search ? 680 : max(680, window.frame.width), area.width - 40),
+                          height: min((panelState == .search ? searchHeight : height) + (error == nil ? 0 : 60), area.height - 40))
+        window.minSize = panelState == .search ? NSSize(width: 420, height: 180) : NSSize(width: 520, height: 280)
+        if panelState == .search { window.styleMask.remove(.resizable) } else { window.styleMask.insert(.resizable) }
         var frame = NSRect(x: window.frame.minX, y: window.frame.maxY - size.height, width: size.width, height: size.height)
         frame.origin.x = max(area.minX + 20, min(frame.origin.x, area.maxX - frame.width - 20))
         frame.origin.y = max(area.minY + 20, min(frame.origin.y, area.maxY - frame.height - 20))
@@ -175,15 +192,26 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool { hide(); return false }
     func back() {
-        session?.close(); session = nil
+        guard session?.close(waitForTask: true) ?? true, endWorkflow() else {
+            error = String(localized: "plugins.taskStopFailed"); return
+        }
+        session = nil
+        executionID = UUID(); retryAction = nil; error = nil
+        window?.hidesOnDeactivate = true
         focusRequest = UUID()
         updateLayout(resultCount: resultCount)
     }
     func endSession(packKey: String, confirm: Bool = false) -> Bool {
-        guard session?.entry.action.packID == packKey else { return true }
-        if confirm && !confirmSwitch() { return false }
-        guard session?.close(waitForTask: true) ?? true else { error = String(localized: "plugins.taskStopFailed"); return false }
-        back(); return true
+        let embedded = session?.entry.action.packID == packKey || workflow?.pack.key == packKey
+        let detached = ToolWorkspaceController.shared.windows.values.contains { $0.session.entry.action.packID == packKey }
+        if confirm && (embedded || detached) && !confirmSwitch() { return false }
+        guard ToolWorkspaceController.shared.close(packKey: packKey) else { return false }
+        if workflow?.pack.key == packKey, !endWorkflow() { return false }
+        if session?.entry.action.packID == packKey {
+            guard session?.close(waitForTask: true) ?? true else { error = String(localized: "plugins.taskStopFailed"); return false }
+            back()
+        }
+        return true
     }
     private func confirmSwitch() -> Bool {
         show()
@@ -195,19 +223,130 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
         return alert.runModal() == .alertSecondButtonReturn
     }
     func open(_ entry: PluginLauncherEntry, invocation: PluginInvocation? = nil) {
-        if session != nil && !confirmSwitch() { return }
-        back()
         let context = invocation ?? PluginInvocation(actionID: entry.id, source: .launcher, query: query, finderPath: finderPath)
+        let manager = AppState.shared.packManager
+        guard let current = manager.launcherEntry(actionID: entry.id), current.definition == entry.definition else { return }
+        let enabled = context.source == .finder ? current.action.isEnabled && current.definition.contextMenu
+            : (try? manager.preferences.isEnabled(actionID: entry.id)) == true
+        guard enabled else { return }
+        if session?.entry.id == entry.id { show(); return }
+        if (session != nil || workflowRunning) && !confirmSwitch() { return }
+        back()
+        guard panelState == .search else { return }
         do { try AppState.shared.packManager.preferences.recordUse(actionID: entry.id) }
         catch { self.error = error.localizedDescription }
         if entry.definition.ui == nil {
-            ActionRunner().runLauncher(entry: entry, invocation: context)
+            let token = UUID(); executionID = token
+            retryAction = { [weak self] in self?.open(entry, invocation: context) }
+            ActionRunner().runLauncher(entry: entry, invocation: context) { [weak self] outcome in
+                guard let self, self.executionID == token else { return }
+                if case .failure(let message) = outcome { self.error = message; self.show() }
+            }
         } else {
             session = PluginSession(entry: entry, invocation: context)
+            session?.onBack = { [weak self] in self?.back() }
             show()
         }
     }
+    func detachTool() {
+        guard workflow == nil, let session else { return }
+        hide()
+        guard panelState == .search else { return }
+        ToolWorkspaceController.shared.open(session.entry, invocation: session.invocation)
+    }
+    func openWorkflow(_ entry: LauncherWorkflowEntry, invocation: PluginInvocation? = nil) {
+        let manager = AppState.shared.packManager
+        guard (try? manager.preferences.isEnabled(actionID: entry.id)) == true,
+              manager.workflowEntry(packKey: entry.pack.key, workflowID: entry.definition.id)?.pack.manifest == entry.pack.manifest else { return }
+        if (session != nil || workflowRunning) && !confirmSwitch() { return }
+        let context = invocation ?? PluginInvocation(actionID: entry.id, source: .launcher, query: query, finderPath: finderPath)
+        back()
+        guard panelState == .search else { return }
+        try? manager.preferences.recordUse(actionID: entry.id)
+        beginWorkflow(entry, invocation: context)
+        show()
+    }
+    // Entry validation and switching are owned by openWorkflow; this starts an already accepted run.
+    func beginWorkflow(_ entry: LauncherWorkflowEntry, invocation: PluginInvocation) {
+        workflow = entry; workflowInvocation = invocation; workflowRunning = true; workflowOutput = ""
+        workflowStepIndex = 0; workflowInput = .string(invocation.argument)
+        advanceWorkflow()
+    }
+    private func advanceWorkflow() {
+        guard let workflow, let invocation = workflowInvocation else { return }
+        guard session?.close(waitForTask: true) ?? true else {
+            finishWorkflow(.failure(PluginError(.failed, String(localized: "plugins.taskStopFailed")))); return
+        }
+        session = nil; error = nil
+        guard workflowStepIndex < workflow.definition.steps.count else {
+            finishWorkflow(.success(workflowInput)); return
+        }
+        let step = workflow.definition.steps[workflowStepIndex]
+        guard let definition = workflow.pack.manifest.actions.first(where: { $0.id == step.action }) else {
+            finishWorkflow(.failure(PluginError(.failed, "Workflow action not found: \(step.action)"))); return
+        }
+        let token = UUID(); executionID = token
+        let accept: (Result<JSONValue, Error>) -> Void = { [weak self] result in
+            guard let self, self.workflow != nil, self.workflowRunning, self.executionID == token else { return }
+            self.workflowRun = nil
+            switch result {
+            case .success(let output):
+                self.workflowInput = output; self.workflowStepIndex += 1; self.advanceWorkflow()
+            case .failure: self.finishWorkflow(result)
+            }
+        }
+        if definition.ui != nil && definition.script == nil {
+            let id = PackManager.actionUUID(packKey: workflow.pack.key, packActionID: definition.id)
+            let action = MenuAction(id: id, title: definition.title, icon: .symbol(definition.icon), kind: .openPluginUI,
+                                    matching: MatchRule(), placement: .topLevel, packID: workflow.pack.key, isEnabled: true, sortOrder: 0)
+            let entry = PluginLauncherEntry(id: id, action: action, definition: definition, directory: workflow.directory)
+            let context = PluginInvocation(actionID: id, source: invocation.source, query: invocation.query,
+                                           argument: invocation.argument, paths: invocation.paths, variant: invocation.variant, finderPath: invocation.finderPath)
+            session = PluginSession(entry: entry, invocation: context, workflowInput: workflowInput) { accept(.success($0)) }
+            session?.onBack = { [weak self] in self?.back() }
+        } else {
+            let entry = LauncherWorkflowEntry(pack: workflow.pack,
+                definition: PackWorkflow(id: workflow.definition.id, title: workflow.definition.title, steps: [step]), directory: workflow.directory)
+            workflowRun = ActionRunner().runWorkflow(entry: entry, invocation: invocation, input: workflowInput, completion: accept)
+        }
+        updateLayout(resultCount: resultCount)
+    }
+    private func finishWorkflow(_ result: Result<JSONValue, Error>) {
+        workflowRunning = false; workflowRun = nil
+        switch result {
+        case .success(let value):
+            if case .string(let text) = value { workflowOutput = text }
+            else {
+                let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                workflowOutput = (try? encoder.encode(value)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            }
+            ExecutionLog.shared.append(title: workflow?.definition.title ?? "", outcome: .success(summary: nil))
+        case .failure(let failure):
+            error = failure.localizedDescription
+            ExecutionLog.shared.append(title: workflow?.definition.title ?? "", outcome: .failure(message: failure.localizedDescription))
+        }
+        updateLayout(resultCount: resultCount)
+    }
+    @discardableResult func endWorkflow(id: UUID? = nil) -> Bool {
+        guard id == nil || workflow?.id == id else { return true }
+        if workflow != nil {
+            guard session?.close(waitForTask: true) ?? true else { return false }
+            session = nil
+        }
+        guard workflowRun?.cancelAndWait() ?? true else { return false }
+        if workflow != nil { error = nil }
+        executionID = UUID(); workflowRun = nil; workflow = nil; workflowInvocation = nil
+        workflowRunning = false; workflowOutput = ""
+        workflowInput = .null; workflowStepIndex = 0
+        updateLayout(resultCount: resultCount)
+        return true
+    }
+    func retry() {
+        if let workflow { openWorkflow(workflow, invocation: workflowInvocation) }
+        else { retryAction?() }
+    }
     func reload() {
+        if workflow != nil, session != nil { advanceWorkflow(); return }
         guard let session else { return }
         let entry = session.entry, context = session.invocation
         back(); open(entry, invocation: PluginInvocation(actionID: context.actionID, source: context.source,
@@ -215,6 +354,14 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
                                                        variant: context.variant, finderPath: context.finderPath))
     }
     func validateSession(using manager: PackManager) {
+        ToolWorkspaceController.shared.validate(using: manager)
+        if let workflow {
+            let current = manager.workflowEntry(packKey: workflow.pack.key, workflowID: workflow.definition.id)
+            if current?.pack.manifest != workflow.pack.manifest || (try? manager.preferences.isEnabled(actionID: workflow.id)) != true {
+                _ = endWorkflow()
+            }
+            return // Workflow enablement owns its steps; standalone tool toggles do not interrupt a run.
+        }
         guard let session else { return }
         guard let current = manager.launcherEntry(actionID: session.entry.id), current.definition == session.entry.definition else { back(); return }
         let enabled = session.invocation.source == .finder ? current.action.isEnabled && current.definition.contextMenu
@@ -226,25 +373,29 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
 struct PluginLauncherView: View {
     @ObservedObject var controller: PluginLauncherController
     @ObservedObject var manager: PackManager
-    @State private var entries: [PluginSearchEntry] = []
+    @State private var catalog = LauncherCatalog()
     @State private var recent: [UUID] = []
+    @State private var apps: [ApplicationSearchEntry] = []
+    @State private var loadingApps = false
 
     private enum Result: Identifiable {
-        case plugin(PluginSearchMatch)
+        case plugin(LauncherCatalog.Match), application(ApplicationSearchEntry)
         var id: String {
             switch self {
             case .plugin(let match): return match.entry.id.uuidString
+            case .application(let app): return app.id
             }
         }
         var title: String {
             switch self {
-            case .plugin(let match): return match.entry.title
+            case .plugin(let match): return match.entry.search.title
+            case .application(let app): return app.name
             }
         }
     }
     private var results: [Result] {
-        let plugins = PluginSearch.matches(query: controller.query, entries: entries, recent: recent, keywordsOnly: true)
-        return plugins.map(Result.plugin)
+        let plugins = catalog.search(controller.query, recent: recent)
+        return plugins.map(Result.plugin) + (hasQuery ? ApplicationSearch.matches(query: controller.query, apps: apps).map(Result.application) : [])
     }
     private var hasQuery: Bool { !controller.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
@@ -253,14 +404,21 @@ struct PluginLauncherView: View {
         controller.selectedID = result.id
         switch result {
         case .plugin(let match):
-            if AppState.shared.config.actions.contains(where: { $0.id == match.entry.id && $0.shortcutOnly == true }) {
-                controller.runUserAction(match.entry.id, query: controller.query, argument: match.argument)
-                return
+            let invocation = PluginInvocation(actionID: match.entry.id, source: .launcher, query: controller.query,
+                                              argument: match.argument, finderPath: controller.finderPath)
+            switch match.entry.target {
+            case .action(let action): controller.runUserAction(action.id, query: controller.query, argument: match.argument)
+            case .plugin(let entry): controller.open(entry, invocation: invocation)
+            case .workflow(let entry): controller.openWorkflow(entry, invocation: invocation)
             }
-            guard let entry = manager.launcherEntries().first(where: { $0.id == match.entry.id }) else { reloadEntries(); return }
-            controller.open(entry, invocation: PluginInvocation(actionID: entry.id, source: .launcher,
-                                                               query: controller.query, argument: match.argument,
-                                                               finderPath: controller.finderPath))
+        case .application(let app):
+            controller.hide()
+            NSWorkspace.shared.openApplication(at: app.url, configuration: .init()) { _, error in
+                Task { @MainActor in
+                    if let error { controller.error = error.localizedDescription; controller.show() }
+                    else { controller.query = "" }
+                }
+            }
         }
     }
     private func move(_ delta: Int) {
@@ -270,8 +428,50 @@ struct PluginLauncherView: View {
     }
     var body: some View {
         VStack(spacing: 0) {
-            if let session = controller.session {
-                PluginSessionView(session: session, controller: controller)
+            if let workflow = controller.workflow {
+                VStack(spacing: 0) {
+                    HStack {
+                        Button(String(localized: "plugins.back"), action: controller.back).keyboardShortcut(.escape, modifiers: [])
+                        Text(workflow.definition.title).font(.headline)
+                        Spacer()
+                        if controller.session != nil { Button(String(localized: "plugins.reload"), action: controller.reload) }
+                        else if controller.workflowRunning { ProgressView().controlSize(.small) }
+                        else { Button(String(localized: "panel.retry"), action: controller.retry) }
+                        Button { controller.hide() } label: { Image(systemName: "xmark") }
+                            .accessibilityLabel(String(localized: "launcher.hide"))
+                    }.padding(12)
+                    Divider()
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 12) {
+                            ForEach(Array(workflow.definition.steps.enumerated()), id: \.offset) { index, step in
+                                let title = workflow.pack.manifest.actions.first { $0.id == step.action }?.title ?? step.action
+                                Label("\(index + 1). \(title)", systemImage: index < controller.workflowStepIndex ? "checkmark.circle.fill" :
+                                        index == controller.workflowStepIndex ? "circle.inset.filled" : "circle")
+                                    .foregroundStyle(index == controller.workflowStepIndex ? Color.accentColor : Color.secondary)
+                            }
+                        }.font(.caption).padding(.horizontal, 16).padding(.vertical, 8)
+                    }
+                    Divider()
+                    if let session = controller.session {
+                        if !session.closed { PluginWebView(session: session).id(session.id) }
+                    } else {
+                        ScrollView {
+                            Text(controller.workflowRunning ? String(localized: "panel.running") :
+                                 controller.workflowOutput.isEmpty ? String(localized: controller.error == nil ? "panel.finished" : "panel.failed") : controller.workflowOutput)
+                                .font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading).padding(16)
+                        }
+                    }
+                    if let error = controller.error ?? controller.session?.error {
+                        ScrollView {
+                            Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading).padding(16)
+                        }.frame(maxHeight: 160)
+                    }
+                }
+            } else if let session = controller.session {
+                PluginSessionView(session: session, onBack: controller.back, onReload: controller.reload,
+                                  onClose: controller.hide, onDetach: controller.detachTool)
             } else {
                 HStack(spacing: 16) {
                     Image(systemName: "magnifyingglass").font(.system(size: 26, weight: .regular)).foregroundStyle(.secondary)
@@ -285,10 +485,14 @@ struct PluginLauncherView: View {
                         }.buttonStyle(.plain).accessibilityLabel(String(localized: "launcher.clear"))
                     }
                 }.padding(.horizontal, 24).frame(height: 74)
-                if hasQuery {
+                Group {
                     Divider().padding(.horizontal, 20)
+                    HStack {
+                        Text(String(localized: hasQuery ? "panel.results" : "panel.recent"))
+                        Spacer()
+                    }.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 24).padding(.top, 8)
                     if results.isEmpty {
-                        Text(String(localized: "plugins.noMatches"))
+                        Text(String(localized: hasQuery ? (loadingApps ? "launcher.loadingApps" : "plugins.noMatches") : "panel.emptyRecent"))
                             .foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         ScrollViewReader { proxy in
@@ -312,28 +516,42 @@ struct PluginLauncherView: View {
                         .padding(.horizontal, 24).frame(height: 30)
                 }
             }
-            if let error = controller.error {
-                Text(error).font(.caption).foregroundStyle(.red).lineLimit(2).padding(.horizontal, 20).frame(height: 44)
+            if controller.workflow == nil, let error = controller.error {
+                HStack {
+                    Text(error).font(.caption).foregroundStyle(.red).lineLimit(2).textSelection(.enabled)
+                    Spacer()
+                    if controller.workflow == nil {
+                        Button(String(localized: "plugins.back"), action: controller.back)
+                        Button(String(localized: "panel.retry"), action: controller.retry)
+                    }
+                }.padding(.horizontal, 20).frame(height: 60)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
-            let shape = RoundedRectangle(cornerRadius: hasQuery || controller.session != nil ? 24 : 37)
+            let shape = RoundedRectangle(cornerRadius: 24)
             if #available(macOS 26, *) {
                 shape.fill(.clear).glassEffect(in: shape)
             } else {
                 shape.fill(.regularMaterial)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: hasQuery || controller.session != nil ? 24 : 37))
-        .overlay(RoundedRectangle(cornerRadius: hasQuery || controller.session != nil ? 24 : 37)
+        .clipShape(RoundedRectangle(cornerRadius: 24))
+        .overlay(RoundedRectangle(cornerRadius: 24)
             .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5))
-        .onChange(of: controller.query) { _ in updateResults() }
+        .onChange(of: controller.query) { _ in updateResults(resetSelection: true) }
         .onChange(of: controller.error) { _ in controller.updateLayout(resultCount: results.count) }
         .onReceive(manager.$packs) { _ in DispatchQueue.main.async { reloadEntries() } }
+        .onReceive(AppState.shared.$config) { _ in DispatchQueue.main.async { reloadEntries() } }
         .task(id: controller.focusRequest) {
             reloadEntries()
-            guard controller.session == nil else { return }
+            guard controller.panelState == .search else { return }
+            loadingApps = true
+            let discovered = await Task.detached(priority: .utility) {
+                ApplicationSearch.discover(in: ApplicationSearch.directories)
+            }.value
+            guard !Task.isCancelled else { return }
+            apps = discovered; loadingApps = false; updateResults()
         }
     }
 
@@ -342,18 +560,21 @@ struct PluginLauncherView: View {
             HStack(spacing: 14) {
                 switch result {
                 case .plugin(let match):
-                    if let action = AppState.shared.config.actions.first(where: { $0.id == match.entry.id }) {
-                        ActionIconView(icon: action.icon, size: 38)
-                    }
+                    Image(systemName: match.entry.icon).font(.system(size: 26)).frame(width: 38, height: 38)
+                case .application(let app):
+                    Image(nsImage: NSWorkspace.shared.icon(forFile: app.url.path)).resizable().frame(width: 38, height: 38)
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(result.title).font(.system(size: 18, weight: .medium)).lineLimit(1)
                     if case .plugin(let match) = result {
-                        Text(match.argument.isEmpty ? match.entry.keywords.joined(separator: " · ") : match.argument)
+                        Text(match.argument.isEmpty ? match.entry.subtitle : match.argument)
                             .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
                 }
                 Spacer()
+                if case .plugin(let match) = result {
+                    Text(match.entry.kind).font(.caption).foregroundStyle(.secondary)
+                }
                 if result.id == controller.selectedID {
                     Text(String(localized: "launcher.open")).font(.caption).foregroundStyle(.secondary)
                     Text("↵").font(.system(size: 15)).padding(.horizontal, 7).padding(.vertical, 3)
@@ -369,14 +590,14 @@ struct PluginLauncherView: View {
 
     private func reloadEntries() {
         do {
-            entries = try manager.shortcutEntries()
+            catalog = try manager.launcherCatalog()
             recent = try manager.preferences.recent()
             updateResults()
         } catch { controller.error = error.localizedDescription }
     }
 
-    private func updateResults() {
-        if !results.contains(where: { $0.id == controller.selectedID }) || controller.session == nil {
+    private func updateResults(resetSelection: Bool = false) {
+        if resetSelection || !results.contains(where: { $0.id == controller.selectedID }) {
             controller.selectedID = results.first?.id
         }
         controller.updateLayout(resultCount: results.count)
@@ -430,20 +651,28 @@ private struct PluginSearchField: NSViewRepresentable {
     }
 }
 
-private struct PluginSessionView: View {
+struct PluginSessionView: View {
     @ObservedObject var session: PluginSession
-    @ObservedObject var controller: PluginLauncherController
+    let onBack: () -> Void
+    let onReload: () -> Void
+    let onClose: () -> Void
+    var onDetach: (() -> Void)?
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Button(String(localized: "plugins.back")) { controller.back() }
-                Text(session.entry.definition.title).font(.headline); Spacer()
-                Button(String(localized: "plugins.reload")) { controller.reload() }
-                Button { controller.hide() } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.plain).accessibilityLabel(String(localized: "launcher.hide"))
-            }.padding(12)
+            if let onDetach {
+                HStack {
+                    Button(String(localized: "plugins.back"), action: onBack)
+                        .keyboardShortcut(.escape, modifiers: [])
+                    Text(session.entry.definition.title).font(.headline); Spacer()
+                    Button(String(localized: "panel.detach"), action: onDetach)
+                    Button(String(localized: "plugins.reload"), action: onReload)
+                    Button(action: onClose) { Image(systemName: "xmark") }
+                        .buttonStyle(.plain).accessibilityLabel(String(localized: "launcher.hide"))
+                }.padding(12)
+                Divider()
+            }
             if let error = session.error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled).padding(8) }
-            Divider(); PluginWebView(session: session).id(session.id)
+            if !session.closed { PluginWebView(session: session).id(session.id) }
         }
     }
 }

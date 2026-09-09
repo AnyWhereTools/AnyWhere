@@ -19,10 +19,12 @@ struct SettingsWindow: View {
             .background(.regularMaterial)
             Divider()
             VStack(alignment: .leading, spacing: 0) {
-                Text(state.settingsTab.title)
-                    .font(.system(size: 22, weight: .semibold))
-                    .padding(.horizontal, 24).padding(.vertical, 20)
-                Divider()
+                if state.settingsTab != .shortcuts && state.settingsTab != .contextMenu {
+                    Text(state.settingsTab.title)
+                        .font(.system(size: 22, weight: .semibold))
+                        .padding(.horizontal, 24).padding(.vertical, 20)
+                    Divider()
+                }
                 Group {
                     switch state.settingsTab {
                     case .contextMenu: ScreenMenuHub()

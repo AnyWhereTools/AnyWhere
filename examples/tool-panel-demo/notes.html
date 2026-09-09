@@ -1,0 +1,14 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><link rel="stylesheet" href="style.css">
+<title>便笺面板 Demo</title>
+<header><div><h1>随手记</h1><p>每个窗口独立保存输入；关闭窗口后清空。</p></div><span class="badge">面板 Demo</span></header>
+<label for="note">便笺内容</label><textarea id="note" placeholder="写点什么，再打开独立窗口对比…"></textarea>
+<div class="toolbar"><button class="primary" id="copy">复制内容</button><button id="clear">清空</button><output id="count" aria-live="polite">0 字</output></div>
+<p id="status" role="status"></p>
+<script>
+const note = document.getElementById('note'), status = document.getElementById('status');
+const count = () => document.getElementById('count').textContent = Array.from(note.value).length + ' 字';
+note.addEventListener('input', count);
+document.getElementById('clear').onclick = () => { note.value = ''; count(); note.focus(); };
+document.getElementById('copy').onclick = async () => { try { await anywhere.clipboard.writeText(note.value); status.textContent = '已复制'; } catch (error) { status.textContent = error.message; } };
+anywhere.onEnter(context => { note.value = context.argument || ''; count(); });
+</script></html>

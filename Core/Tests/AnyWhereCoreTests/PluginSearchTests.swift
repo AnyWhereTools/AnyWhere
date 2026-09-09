@@ -2,6 +2,22 @@ import XCTest
 @testable import AnyWhereCore
 
 final class PluginSearchTests: XCTestCase {
+    func testNamePinyinAndInitialsWithoutConfiguredKeywords() {
+        let note = PluginSearchEntry(id: UUID(), title: "面板 Demo · 便签", keywords: ["note"])
+        for query in ["便签", "BQ", "bianqian", "面板", "mb"] {
+            XCTAssertEqual(PluginSearch.matches(query: query, entries: [note], recent: []).first?.entry.id, note.id, query)
+        }
+        let jian = PluginSearchEntry(id: UUID(), title: "面板 Demo · 便笺", keywords: [])
+        for query in ["便笺", "bj", "bianjian"] {
+            XCTAssertEqual(PluginSearch.matches(query: query, entries: [jian], recent: []).first?.entry.id, jian.id, query)
+        }
+        XCTAssertTrue(PluginSearch.matches(query: "bq", entries: [jian], recent: []).isEmpty)
+        XCTAssertTrue(PluginSearch.matches(query: "bq", entries: [note], recent: [], keywordsOnly: true).isEmpty)
+        XCTAssertTrue(PluginSearch.matches(query: "unknown", entries: [note], recent: []).isEmpty)
+        XCTAssertEqual(PluginSearch.matches(query: "note Hello World", entries: [note], recent: []).first?.argument, "Hello World")
+        let explicit = PluginSearchEntry(id: UUID(), title: "Other", keywords: ["bq"])
+        XCTAssertEqual(PluginSearch.matches(query: "bq", entries: [note, explicit], recent: [note.id]).first?.entry.id, explicit.id)
+    }
     func testLauncherUsesExactKeywordsAndKeepsUnmatchedInputForApps() {
         let xlog = PluginSearchEntry(id: UUID(), title: "Xlog 解密", keywords: ["XM", "xm file"])
         for query in ["", "  ", "X", "Xlog 解密", "XML", "unknown"] {

@@ -36,16 +36,9 @@ public enum ApplicationSearch {
     public static func matches(query: String, apps: [ApplicationSearchEntry]) -> [ApplicationSearchEntry] {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return [] }
-        func forms(_ value: String) -> [String] {
-            let source = NSMutableString(string: value) as CFMutableString
-            CFStringTransform(source, nil, "Any-Latin; Latin-ASCII" as CFString, false)
-            let latin = (source as String).lowercased()
-            let initials = latin.split { $0 == " " || $0 == "-" || $0 == "_" }.compactMap(\.first)
-            return [value.lowercased(), latin.replacingOccurrences(of: " ", with: ""), String(initials)]
-        }
         func rank(_ name: String) -> Int? {
             let query = query.lowercased()
-            let values = forms(name)
+            let values = SearchText.forms(name)
             if values.contains(where: { $0 == query }) { return 0 }
             if values.contains(where: { $0.hasPrefix(query) }) { return 1 }
             return values.contains(where: { $0.contains(query) }) ? 2 : nil

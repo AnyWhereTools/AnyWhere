@@ -10,8 +10,10 @@ final class ActionRunner: ActionRunning {
         return tasks.reduce(true) { $1.waitUntilFinished() && $0 }
     }
 
-    @MainActor func runLauncher(entry: PluginLauncherEntry, invocation: PluginInvocation) {
+    @MainActor func runLauncher(entry: PluginLauncherEntry, invocation: PluginInvocation,
+                                completion: ((ExecutionOutcome) -> Void)? = nil) {
         guard Self.launcherTasks[entry.id] == nil else {
+            completion?(.failure(message: String(localized: "plugins.taskBusy")))
             Notifier.showFailure(entry.definition.title, String(localized: "plugins.taskBusy")); return
         }
         let task = PluginTask(), extraEnv = Self.contractEnv()
@@ -34,6 +36,7 @@ final class ActionRunner: ActionRunning {
                 Self.launcherTasks[entry.id] = nil
                 ExecutionLog.shared.append(title: entry.definition.title, outcome: outcome)
                 if case .failure(let message) = outcome { Notifier.showFailure(entry.definition.title, message) }
+                completion?(outcome)
             }
         }
     }
@@ -109,17 +112,16 @@ final class ActionRunner: ActionRunning {
     }
 
     @MainActor
-    func runWorkflow(actions: [MenuAction], variant: String? = nil, urls: [URL] = [], invocation: PluginInvocation? = nil,
-                     completion: @escaping (ExecutionOutcome) -> Void) {
-        guard let action = actions.first else { completion(.success(summary: nil)); return }
-        run(action: action, variant: variant, urls: urls, invocation: invocation) { [weak self] outcome in
-            guard let self else { return }
-            switch outcome {
-            case .failure: completion(outcome)
-            case .success:
-                self.runWorkflow(actions: Array(actions.dropFirst()), variant: variant, urls: urls, invocation: invocation, completion: completion)
+    func runWorkflow(entry: LauncherWorkflowEntry, invocation: PluginInvocation, input: JSONValue,
+                     completion: @escaping (Result<JSONValue, Error>) -> Void) -> LauncherWorkflowRun {
+        let run = LauncherWorkflowRun(), environment = Self.contractEnv()
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = run.run(entry: entry, invocation: invocation, input: input, environment: environment)
+            Task { @MainActor in
+                completion(result)
             }
         }
+        return run
     }
 
     private static func execute(kind: MenuAction.Kind, variant: String?, paths: [String],

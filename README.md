@@ -68,6 +68,21 @@ Pages can persist pack data, write to the clipboard and run cancellable scripts 
 Go/Rust backends without a Node runtime. See the [UI guide](docs/plugin-ui.md) and importable
 [Text Toolbox](examples/ui-tool-pack/README.md). These features require schema 4; versions 1–3 remain supported.
 
+Search also supports full pinyin and initials, enabled custom shortcuts, same-pack workflows
+and installed applications. **Shortcuts** lets you create local scripts with names, keywords
+and optional global hotkeys; Finder menu actions remain separate.
+
+UI tools can open in regular independent windows with native window controls and a native
+Reload Page toolbar button. Detaching/reloading creates a new session, so save drafts through
+host storage. Closing the tool panel ends its session; independent windows stay open while
+you work in other apps. See the [window lifecycle](docs/plugin-ui.md).
+
+Try [Clipboard JSON workflows](examples/tool-panel-demo/README.md) for real script steps, or
+[Response → TypeScript](examples/tool-chain-demo/README.md) for interactive A → B → C tool
+pages. Import and review the pack, then enable each desired tool/workflow in pack details.
+These workflows currently reference tools **within one pack**. Cross-developer, cross-pack
+composition is [planned, not implemented](docs/cross-pack-workflows.md).
+
 ### Importing packs
 
 An extension pack is a folder with a root `manifest.json` and its scripts. In **Extension Packs
@@ -203,6 +218,9 @@ repeating macOS permission prompts.
 
 ## Docs & contributing
 
+- [UI, windows and workflow SDK](docs/plugin-ui.md) · [TypeScript declarations](docs/sdk/anywhere.d.ts)
+- [Script workflow demo](examples/tool-panel-demo/README.md) · [Interactive tool-chain demo](examples/tool-chain-demo/README.md)
+- [Cross-pack workflow design and implementation plan — not implemented](docs/cross-pack-workflows.md)
 - [Extension Pack Specification](docs/pack-spec.md) · [basic example](examples/example-pack/) · [Xlog Decoder pack](examples/xlog-decoder-pack/)
 - [Contributing](CONTRIBUTING.md) · [Releasing](docs/RELEASING.md) · [Security](SECURITY.md)
 - Core unit tests + preset-script tests + an App/extension compile check run in CI on pushes to `main` and pull requests (`.github/workflows/ci.yml`).

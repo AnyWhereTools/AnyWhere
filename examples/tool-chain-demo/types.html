@@ -1,0 +1,11 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>JSON 转 TypeScript</title><link rel="stylesheet" href="style.css">
+<body data-tool="types">
+<header><div><h1>JSON → TypeScript</h1><p>基于样本推断字段，生成后可编辑、复制。</p></div><span class="badge" id="mode">独立工具</span></header>
+<section id="standalone"><label for="input">JSON 数据</label><textarea id="input" spellcheck="false"></textarea><button id="sample">填入示例</button></section>
+<label for="name">类型名称</label><input id="name" value="Response" spellcheck="false">
+<div class="toolbar"><button id="process">生成类型</button></div>
+<label for="code">TypeScript 代码</label><textarea class="code" id="code" spellcheck="false"></textarea>
+<p>检查全部数组元素，缺失字段标记为可选。样本推断不等于接口契约，请确认后使用。</p>
+<div class="toolbar"><button id="copy" disabled>复制 TypeScript</button><button class="primary" id="next" hidden disabled>完成工作流</button></div>
+<p id="status" role="status"></p>
+<script src="tools.js"></script><script src="ui.js"></script></body></html>

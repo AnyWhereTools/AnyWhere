@@ -1,0 +1,10 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>JSON 节点选择器</title><link rel="stylesheet" href="style.css">
+<body data-tool="select">
+<header><div><h1>JSON 节点选择器</h1><p>选择真正需要的数据，例如 $/data/items。</p></div><span class="badge" id="mode">独立工具</span></header>
+<section id="standalone"><label for="input">JSON 数据</label><textarea id="input" spellcheck="false"></textarea><div class="toolbar"><button id="sample">填入示例</button><button id="process">载入 JSON</button></div></section>
+<label for="choice">数据节点</label><select id="choice" disabled></select>
+<pre id="preview">载入后在这里预览选中节点。</pre>
+<p id="hint">选择节点后才会进入下一步。</p>
+<div class="toolbar"><button id="copy" disabled>复制所选 JSON</button><button class="primary" id="next" hidden disabled>交给 C：生成类型</button></div>
+<p id="status" role="status"></p>
+<script src="tools.js"></script><script src="ui.js"></script></body></html>

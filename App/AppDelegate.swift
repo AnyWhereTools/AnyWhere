@@ -23,6 +23,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ActionRunner.cancelLauncherTasks()
     }
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        PluginLauncherController.shared.show()
+        return true
+    }
+
     /// 扩展是否启用。FIFinderSyncController.isExtensionEnabled 在开发/ad-hoc 签名版上不可靠
     /// (常返回 false 即便扩展已启用、右键正常)→ 用 pluginkit 这个「Finder 真正加载哪个」的实况兜底。
     static func extensionEnabled() -> Bool {

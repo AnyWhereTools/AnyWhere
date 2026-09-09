@@ -18,11 +18,13 @@ private let kHairline: CGFloat = 0.5
 struct PvField<Content: View>: View {
     let label: String
     var hint: String?
+    var leading: Bool
     @ViewBuilder var content: Content
 
-    init(_ label: String, hint: String? = nil, @ViewBuilder content: () -> Content) {
+    init(_ label: String, hint: String? = nil, leading: Bool = false, @ViewBuilder content: () -> Content) {
         self.label = label
         self.hint = hint
+        self.leading = leading
         self.content = content()
     }
 
@@ -31,7 +33,7 @@ struct PvField<Content: View>: View {
             Text(label)
                 .font(.system(size: 12))
                 .foregroundStyle(AWColor.label2)
-                .frame(width: 70, alignment: .trailing)
+                .frame(width: leading ? 88 : 70, alignment: leading ? .leading : .trailing)
             VStack(alignment: .leading, spacing: 3) {
                 content
                 if let hint {
@@ -49,10 +51,13 @@ struct PvField<Content: View>: View {
 // 字段逻辑迁移自原 ActionsTab.ActionEditor;此处为常驻内联编辑器,
 // 每次字段改动即写回 AppState.update()。
 
-struct PvEditor: View {
+struct PvEditor<BasicFields: View, AdvancedFields: View>: View {
     let onSave: (MenuAction) -> Void
     let onRestore: (() -> Void)?
     let onDelete: (() -> Void)?
+
+    private let basicFields: BasicFields
+    private let advancedFields: AdvancedFields
 
     @State private var action: MenuAction
     @State private var confirmDelete = false
@@ -77,11 +82,15 @@ struct PvEditor: View {
     @State private var testTask: Task<Void, Never>?
 
     init(action: MenuAction, onSave: @escaping (MenuAction) -> Void,
-         onRestore: (() -> Void)? = nil, onDelete: (() -> Void)? = nil) {
+         onRestore: (() -> Void)? = nil, onDelete: (() -> Void)? = nil,
+         @ViewBuilder basicFields: () -> BasicFields = { EmptyView() },
+         @ViewBuilder advancedFields: () -> AdvancedFields = { EmptyView() }) {
         self._action = State(initialValue: action)
         self.onSave = onSave
         self.onRestore = onRestore
         self.onDelete = onDelete
+        self.basicFields = basicFields()
+        self.advancedFields = advancedFields()
     }
 
     private var hue: AppIconHue {
@@ -105,194 +114,29 @@ struct PvEditor: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            // 头部
-            HStack(spacing: 11) {
-                ActionIconView(icon: action.icon, hue: hue, size: 36)
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 7) {
-                        Text(action.title.isEmpty ? String(localized: "editor.untitledAction") : action.title)
-                            .font(.system(size: 15.5, weight: .semibold))
-                        if action.presetKey != nil {
-                            Badge(String(localized: "editor.presetBadge"))
-                        }
-                    }
-                    Text(subtitle)
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(AWColor.label2)
-                }
-                Spacer(minLength: 0)
-                AWSwitch(Binding(get: { action.isEnabled }, set: { action.isEnabled = $0; commit() }))
+        VStack(alignment: .leading, spacing: 16) {
+            summary
+            Divider()
+            ShortcutSettingsGroup("基本设置") {
+                identityFields
+                basicFields
             }
-
-            VStack(alignment: .leading, spacing: 11) {
-                PvField(String(localized: "editor.menuTitle")) {
-                    AWField(Binding(get: { action.title }, set: { action.title = $0; commit() }),
-                            placeholder: String(localized: "editor.menuTitle"), width: 200)
-                }
-                PvField(String(localized: "editor.icon")) {
-                    IconPickerField(
-                        icon: Binding(get: { action.icon },
-                                      set: { action.icon = $0; commit() }),
-                        hue: Binding(get: { hue },
-                                     set: { action.iconHue = $0.rawValue; commit() })
-                    )
-                }
-                PvField(String(localized: "editor.type")) {
-                    Segmented([String(localized: "editor.typeScriptFile"), String(localized: "editor.typeInlineScript"), String(localized: "editor.typeOpenWithApp")], selection: $kindChoice)
-                        .frame(width: 240)
-                        .onChange(of: kindChoice) { _ in commit() }
-                }
-
-                // 类型相关字段
-                if kindChoice == 0 {
-                    PvField(String(localized: "editor.scriptPath"), hint: String(localized: "editor.scriptPathHint")) {
-                        HStack(spacing: 8) {
-                            AWField($scriptPath, mono: true, width: 200)
-                                .onChange(of: scriptPath) { _ in commit() }
-                            AWButton(String(localized: "editor.choose"), size: .sm) { chooseScript() }
-                        }
-                    }
-                } else if kindChoice == 1 {
-                    PvField(String(localized: "editor.typeInlineScript"), hint: String(localized: "editor.inlineScriptHint")) {
-                        TextEditor(text: $inlineSource)
-                            .font(.system(size: 12, design: .monospaced))
-                            .frame(width: 240, height: 72)
-                            .scrollContentBackground(.hidden)
-                            .padding(4)
-                            .background(AWColor.field)
-                            .clipShape(RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous)
-                                    .stroke(AWColor.border, lineWidth: kHairline)
-                            )
-                            .onChange(of: inlineSource) { _ in commit() }
-                    }
-                } else {
-                    PvField(String(localized: "editor.appBundleID")) {
-                        HStack(spacing: 8) {
-                            AWField($appBundleID, mono: true, width: 200)
-                                .onChange(of: appBundleID) { _ in commit() }
-                            AWButton(String(localized: "editor.chooseApp"), size: .sm) { chooseApp() }
-                        }
-                    }
-                }
-
-                if action.shortcutOnly != true {
-                PvField(String(localized: "editor.target")) {
-                    targetPopup
-                }
-                // 选中数范围对「目录空白处」无意义(那里没有选中项),仅在针对选中项时显示。
-                if targetChoice != 3 {
-                    PvField(String(localized: "editor.selectionCount"), hint: String(localized: "editor.selectionCountHint")) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(spacing: 8) {
-                                Text(String(localized: "editor.selMin")).font(.system(size: 12)).foregroundStyle(AWColor.label2)
-                                selCountField($minSelText)
-                                Text(String(localized: "editor.selMax")).font(.system(size: 12)).foregroundStyle(AWColor.label2)
-                                selCountField($maxSelText)
-                            }
-                            if selCountInvalid {
-                                Text(String(localized: "editor.selectionCountInvalid"))
-                                    .font(.system(size: 11)).foregroundStyle(AWColor.red)
-                            }
-                        }
-                    }
-                }
-                PvField(String(localized: "editor.extensions"), hint: String(localized: "editor.extensionsHint")) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        AWField($extensionsText, placeholder: "xlog, log, tar.gz", mono: true, width: 240)
-                            .onChange(of: extensionsText) { _ in
-                                guard loaded else { return }
-                                guard extensionsText != action.matching.extensions.joined(separator: ", ") else { return }
-                                extensionsEdited = true
-                                commit()
-                            }
-                        if !extensionsValid {
-                            Text(String(localized: "editor.extensionsInvalid"))
-                                .font(.system(size: 11)).foregroundStyle(AWColor.red)
-                        }
-                        if !extensionsEdited && (!action.matching.utis.isEmpty || action.matching.filenamePattern != nil) {
-                            Text(String(localized: "editor.legacyTypeHint"))
-                                .font(.system(size: 11)).foregroundStyle(AWColor.label2)
-                            Text((action.matching.utis + [action.matching.filenamePattern].compactMap { $0 }).joined(separator: ", "))
-                                .font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
-                            AWButton(String(localized: "editor.useExtensions"), size: .sm) {
-                                extensionsEdited = true
-                                commit()
-                            }
-                        }
-                    }
-                }
-                PvField(String(localized: "editor.placement")) {
-                    placementPopup
-                }
-                PvField(String(localized: "editor.submenuExpand")) {
-                    HStack(spacing: 8) {
-                        variantPopup
-                        if variantChoice == 1, !variantsFixed.isEmpty {
-                            Text(variantsFixed.split(separator: ",")
-                                .map { $0.trimmingCharacters(in: .whitespaces) }
-                                .filter { !$0.isEmpty }.joined(separator: " · "))
-                                .font(.system(size: 11.5, design: .monospaced))
-                                .foregroundStyle(AWColor.label2)
-                        }
-                    }
-                }
-                if variantChoice == 1 {
-                    PvField(String(localized: "editor.fixedItems"), hint: String(localized: "editor.fixedItemsHint")) {
-                        AWField($variantsFixed, mono: true, width: 200)
-                            .onChange(of: variantsFixed) { _ in commit() }
-                    }
-                } else if variantChoice == 2 {
-                    PvField(String(localized: "editor.listDirectory"), hint: String(localized: "editor.listDirectoryHint")) {
-                        AWField($variantsDir, mono: true, width: 200)
-                            .onChange(of: variantsDir) { _ in commit() }
-                    }
-                }
-                }
-                if kindChoice < 2 {
-                    PvField(String(localized: "editor.timeout")) {
-                        HStack(spacing: 6) {
-                            TextField("", value: $timeoutSeconds, format: .number)
-                                .textFieldStyle(.plain)
-                                .font(.system(size: 13))
-                                .frame(width: 56)
-                                .padding(.horizontal, 9).padding(.vertical, 4)
-                                .background(AWColor.field)
-                                .clipShape(RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous)
-                                    .stroke(AWColor.border, lineWidth: kHairline))
-                                .onChange(of: timeoutSeconds) { _ in commit() }
-                            Text(String(localized: "editor.seconds")).font(.system(size: 12)).foregroundStyle(AWColor.label2)
-                        }
-                    }
+            ShortcutSettingsGroup("执行设置") {
+                executionFields
+            }
+            if action.shortcutOnly != true {
+                ShortcutSettingsGroup("显示规则") {
+                    matchingFields
                 }
             }
-
-            HStack(spacing: 8) {
-                if kindChoice == 0 {
-                    AWButton(String(localized: "editor.openScriptInEditor"), systemImage: "chevron.left.forwardslash.chevron.right", size: .sm) {
-                        openScriptInEditor()
-                    }
-                }
-                if kindChoice < 2 {   // 仅脚本类(文件 / 内联)可试运行
-                    AWButton(testRunning ? String(localized: "editor.testRunRunning") : String(localized: "editor.testRun"),
-                             systemImage: "play", size: .sm) { testRun() }
-                        .disabled(testRunning)
-                }
-                Spacer(minLength: 0)
-                if onDelete != nil {
-                    AWButton(String(localized: "editor.delete"), kind: .danger, size: .sm) { confirmDelete = true }
-                }
-                if let onRestore {
-                    AWButton(String(localized: "editor.restorePreset"), size: .sm) { onRestore() }
-                }
+            ShortcutSettingsGroup("高级选项") {
+                advancedFields
+                timeoutField
+                actionButtons
             }
-            .padding(.top, 2)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.horizontal, action.shortcutOnly == true ? 0 : 20)
+        .padding(.vertical, action.shortcutOnly == true ? 0 : 20)
         .onAppear(perform: loadFromAction)
         .onDisappear { flushCommit(); testTask?.cancel() }
         .sheet(item: $testRunResult) { TestRunSheet(outcome: $0) }
@@ -307,6 +151,205 @@ struct PvEditor: View {
                  ? String(localized: "editor.deletePresetMessage")
                  : String(localized: "editor.deleteActionMessage"))
         }
+    }
+
+    @ViewBuilder private var summary: some View {
+        HStack(spacing: 11) {
+            ActionIconView(icon: action.icon, hue: hue, size: 48)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 7) {
+                    Text(action.title.isEmpty ? String(localized: "editor.untitledAction") : action.title)
+                        .font(.system(size: 18, weight: .semibold))
+                    if action.presetKey != nil {
+                        Badge(String(localized: "editor.presetBadge"))
+                    }
+                }
+                Text(subtitle)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(AWColor.label2)
+            }
+            Spacer(minLength: 0)
+            AWSwitch(Binding(get: { action.isEnabled }, set: { action.isEnabled = $0; commit() }))
+        }
+    }
+
+    @ViewBuilder private var identityFields: some View {
+        PvField(String(localized: "editor.menuTitle"), leading: true) {
+            AWField(Binding(get: { action.title }, set: { action.title = $0; commit() }),
+                    placeholder: String(localized: "editor.menuTitle"))
+        }
+        PvField(String(localized: "editor.icon"), leading: true) {
+            IconPickerField(
+                icon: Binding(get: { action.icon },
+                              set: { action.icon = $0; commit() }),
+                hue: Binding(get: { hue },
+                             set: { action.iconHue = $0.rawValue; commit() })
+            )
+        }
+    }
+
+    @ViewBuilder private var executionFields: some View {
+        PvField(String(localized: "editor.type"), leading: true) {
+            Segmented([String(localized: "editor.typeScriptFile"), String(localized: "editor.typeInlineScript"), String(localized: "editor.typeOpenWithApp")], selection: $kindChoice)
+                .onChange(of: kindChoice) { _ in commit() }
+        }
+
+        // 类型相关字段
+        if kindChoice == 0 {
+            PvField(String(localized: "editor.scriptPath"), hint: String(localized: "editor.scriptPathHint"), leading: true) {
+                HStack(spacing: 8) {
+                    AWField($scriptPath, mono: true)
+                        .onChange(of: scriptPath) { _ in commit() }
+                    AWButton(String(localized: "editor.choose"), size: .sm) { chooseScript() }
+                }
+            }
+        } else if kindChoice == 1 {
+            PvField(String(localized: "editor.typeInlineScript"), hint: String(localized: "editor.inlineScriptHint"), leading: true) {
+                TextEditor(text: $inlineSource)
+                    .font(.system(size: 12, design: .monospaced))
+                    .frame(height: 82)
+                    .scrollContentBackground(.hidden)
+                    .padding(4)
+                    .background(AWColor.field)
+                    .clipShape(RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous)
+                            .stroke(AWColor.border, lineWidth: kHairline)
+                    )
+                    .onChange(of: inlineSource) { _ in commit() }
+            }
+        } else {
+            PvField(String(localized: "editor.appBundleID"), leading: true) {
+                HStack(spacing: 8) {
+                    AWField($appBundleID, mono: true)
+                        .onChange(of: appBundleID) { _ in commit() }
+                    AWButton(String(localized: "editor.chooseApp"), size: .sm) { chooseApp() }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var matchingFields: some View {
+        if action.shortcutOnly != true {
+        PvField(String(localized: "editor.target"), leading: true) {
+            targetPopup
+        }
+        // 选中数范围对「目录空白处」无意义(那里没有选中项),仅在针对选中项时显示。
+        if targetChoice != 3 {
+            PvField(String(localized: "editor.selectionCount"), hint: String(localized: "editor.selectionCountHint"), leading: true) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(String(localized: "editor.selMin")).font(.system(size: 12)).foregroundStyle(AWColor.label2)
+                        selCountField($minSelText)
+                        Text(String(localized: "editor.selMax")).font(.system(size: 12)).foregroundStyle(AWColor.label2)
+                        selCountField($maxSelText)
+                    }
+                    if selCountInvalid {
+                        Text(String(localized: "editor.selectionCountInvalid"))
+                            .font(.system(size: 11)).foregroundStyle(AWColor.red)
+                    }
+                }
+            }
+        }
+        PvField(String(localized: "editor.extensions"), hint: String(localized: "editor.extensionsHint"), leading: true) {
+            VStack(alignment: .leading, spacing: 6) {
+                AWField($extensionsText, placeholder: "xlog, log, tar.gz", mono: true)
+                    .onChange(of: extensionsText) { _ in
+                        guard loaded else { return }
+                        guard extensionsText != action.matching.extensions.joined(separator: ", ") else { return }
+                        extensionsEdited = true
+                        commit()
+                    }
+                if !extensionsValid {
+                    Text(String(localized: "editor.extensionsInvalid"))
+                        .font(.system(size: 11)).foregroundStyle(AWColor.red)
+                }
+                if !extensionsEdited && (!action.matching.utis.isEmpty || action.matching.filenamePattern != nil) {
+                    Text(String(localized: "editor.legacyTypeHint"))
+                        .font(.system(size: 11)).foregroundStyle(AWColor.label2)
+                    Text((action.matching.utis + [action.matching.filenamePattern].compactMap { $0 }).joined(separator: ", "))
+                        .font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
+                    AWButton(String(localized: "editor.useExtensions"), size: .sm) {
+                        extensionsEdited = true
+                        commit()
+                    }
+                }
+            }
+        }
+        PvField(String(localized: "editor.placement"), leading: true) {
+            placementPopup
+        }
+        PvField(String(localized: "editor.submenuExpand"), leading: true) {
+            HStack(spacing: 8) {
+                variantPopup
+                if variantChoice == 1, !variantsFixed.isEmpty {
+                    Text(variantsFixed.split(separator: ",")
+                        .map { $0.trimmingCharacters(in: .whitespaces) }
+                        .filter { !$0.isEmpty }.joined(separator: " · "))
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundStyle(AWColor.label2)
+                }
+            }
+        }
+        if variantChoice == 1 {
+            PvField(String(localized: "editor.fixedItems"), hint: String(localized: "editor.fixedItemsHint"), leading: true) {
+                AWField($variantsFixed, mono: true)
+                    .onChange(of: variantsFixed) { _ in commit() }
+            }
+        } else if variantChoice == 2 {
+            PvField(String(localized: "editor.listDirectory"), hint: String(localized: "editor.listDirectoryHint"), leading: true) {
+                AWField($variantsDir, mono: true)
+                    .onChange(of: variantsDir) { _ in commit() }
+            }
+        }
+        }
+    }
+
+    @ViewBuilder private var timeoutField: some View {
+        if kindChoice < 2 {
+            PvField(String(localized: "editor.timeout"), leading: true) {
+                HStack(spacing: 6) {
+                    TextField("", value: $timeoutSeconds, format: .number)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13))
+                        .frame(width: 56)
+                        .padding(.horizontal, 9).padding(.vertical, 4)
+                        .background(AWColor.field)
+                        .clipShape(RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: AWRadius.control, style: .continuous)
+                            .stroke(AWColor.border, lineWidth: kHairline))
+                        .onChange(of: timeoutSeconds) { _ in commit() }
+                    Text(String(localized: "editor.seconds")).font(.system(size: 12)).foregroundStyle(AWColor.label2)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var actionButtons: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                if kindChoice == 0 {
+                    AWButton(String(localized: "editor.openScriptInEditor"), systemImage: "chevron.left.forwardslash.chevron.right", size: .sm) {
+                        openScriptInEditor()
+                    }
+                }
+                if kindChoice < 2 {   // 仅脚本类(文件 / 内联)可试运行
+                    AWButton(testRunning ? String(localized: "editor.testRunRunning") : String(localized: "editor.testRun"),
+                             systemImage: "play", size: .sm) { testRun() }
+                        .disabled(testRunning)
+                }
+            }
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                if onDelete != nil {
+                    AWButton(String(localized: "editor.delete"), kind: .danger, size: .sm) { confirmDelete = true }
+                }
+                if let onRestore {
+                    AWButton(String(localized: "editor.restorePreset"), size: .sm) { onRestore() }
+                }
+            }
+        }
+        .padding(.top, 2)
     }
 
     /// 最少 > 最多 → 该动作永不出现,给个明确警告。
@@ -622,8 +665,8 @@ struct PvPackPanel: View {
             Text(label)
                 .font(.system(size: 12))
                 .foregroundStyle(AWColor.label2)
-                .frame(width: 70, alignment: .trailing)
-            AWField(value: value, mono: mono, width: 150)
+                .frame(width: 88, alignment: .leading)
+            AWField(value: value, mono: mono)
             Image(systemName: "lock.fill")
                 .font(.system(size: 11))
                 .foregroundStyle(AWColor.label3)
@@ -632,12 +675,12 @@ struct PvPackPanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 13) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 11) {
-                AppIcon(action?.icon.symbolName ?? "arrow.up.circle", size: 36, hue: .teal)
+                AppIcon(action?.icon.symbolName ?? "arrow.up.circle", size: 48, hue: .teal)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 7) {
-                        Text(resolvedTitle).font(.system(size: 15.5, weight: .semibold))
+                        Text(resolvedTitle).font(.system(size: 18, weight: .semibold))
                         Badge(resolvedPackName, tone: .accent)
                     }
                     Text(String(localized: "panel.fromPackSubtitle"))
@@ -653,18 +696,19 @@ struct PvPackPanel: View {
                     AWSwitch(.constant(isOn))
                 }
             }
+            Divider()
             Banner(String(localized: "panel.packReadOnlyBanner"),
                    tone: .accent, systemImage: "info.circle.fill")
-            VStack(alignment: .leading, spacing: 10) {
-                PvField(String(localized: "editor.menuTitle")) {
+            ShortcutSettingsGroup("基本设置") {
+                PvField(String(localized: "editor.menuTitle"), leading: true) {
                     if liveMode {
-                        AWField($editTitle, placeholder: String(localized: "editor.menuTitle"), width: 200)
+                        AWField($editTitle, placeholder: String(localized: "editor.menuTitle"))
                             .onChange(of: editTitle) { _ in commit() }
                     } else {
-                        AWField(value: menuTitle, width: 200)
+                        AWField(value: menuTitle)
                     }
                 }
-                PvField(String(localized: "editor.placement")) {
+                PvField(String(localized: "editor.placement"), leading: true) {
                     HStack(spacing: 8) {
                         if liveMode {
                             placementPopup
@@ -692,7 +736,9 @@ struct PvPackPanel: View {
                     .id(action.id)
                     .id(configurationFields)
             }
-            CodeBlock(resolvedScript, lang: action?.kind == .openPluginUI ? "HTML" : String(localized: "panel.langZshReadOnly"), maxHeight: 140)
+            ShortcutSettingsGroup("执行设置") {
+                CodeBlock(resolvedScript, lang: action?.kind == .openPluginUI ? "HTML" : String(localized: "panel.langZshReadOnly"), maxHeight: 140)
+            }
             HStack(spacing: 8) {
                 AWButton(String(localized: "panel.openRepoHome"), systemImage: "arrow.up.right.square", size: .sm) {
                     if let s = resolvedRepoURL, let url = URL(string: s) { NSWorkspace.shared.open(url) }
@@ -809,7 +855,7 @@ struct PanelCard: View {
     var toggleEnabled: Bool = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 13) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 11) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
@@ -818,10 +864,10 @@ struct PanelCard: View {
                         .font(.system(size: 20))
                         .foregroundStyle(AWColor.label2)
                 }
-                .frame(width: 36, height: 36)
+                .frame(width: 48, height: 48)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 7) {
-                        Text(title).font(.system(size: 15, weight: .semibold))
+                        Text(title).font(.system(size: 18, weight: .semibold))
                         if locked {
                             Image(systemName: "lock.fill")
                                 .font(.system(size: 12))
@@ -838,6 +884,8 @@ struct PanelCard: View {
                     .disabled(!toggleEnabled)
             }
 
+            Divider()
+            ShortcutSettingsGroup("基本设置") {
             // 可控程度灰条
             HStack(spacing: 7) {
                 ControlDot(control)
@@ -865,6 +913,7 @@ struct PanelCard: View {
                 ExtensionManager.openSystemSettings()
             }
             .padding(.top, 4)
+            }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 16)

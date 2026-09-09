@@ -22,6 +22,8 @@ final class ApplicationSearchTests: XCTestCase {
         XCTAssertEqual(ApplicationSearch.matches(query: " alpha ", apps: apps).map(\.name), ["Alpha", "Alpha", "Alphabet", "My Alpha"])
         XCTAssertEqual(ApplicationSearch.matches(query: "notes", apps: apps).first?.name, "备忘录")
         XCTAssertEqual(ApplicationSearch.matches(query: "备忘", apps: apps).first?.name, "备忘录")
+        XCTAssertEqual(ApplicationSearch.matches(query: "BWL", apps: apps).first?.name, "备忘录")
+        XCTAssertEqual(ApplicationSearch.matches(query: "beiwanglu", apps: apps).first?.name, "备忘录")
         XCTAssertTrue(ApplicationSearch.matches(query: "unknown", apps: apps).isEmpty)
     }
 }

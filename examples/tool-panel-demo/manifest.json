@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 4,
+  "uiApiVersion": 1,
+  "name": "工具面板 Demo",
+  "author": "AnyWhere",
+  "description": "便笺与 JSON 面板；复制 JSON 后，一键格式化或压缩并写回剪贴板。",
+  "icon": "rectangle.on.rectangle",
+  "actions": [
+    {"id":"notes","title":"面板 Demo · 便笺","icon":"note.text","contextMenu":false,"ui":{"entry":"notes.html","height":460},"launcher":{"keywords":["便笺","demo notes"]},"capabilities":["clipboard.write"]},
+    {"id":"json","title":"面板 Demo · JSON","icon":"curlybraces","contextMenu":false,"ui":{"entry":"json.html","height":460},"launcher":{"keywords":["json","demo json"]},"capabilities":["clipboard.write"]},
+    {"id":"read-clipboard","title":"读取剪贴板（工作流步骤）","icon":"doc.on.clipboard","contextMenu":false,"script":"read-clipboard.zsh","launcher":{}},
+    {"id":"format-json","title":"格式化 JSON（工作流步骤）","contextMenu":false,"script":"format-json.zsh","launcher":{}},
+    {"id":"compact-json","title":"压缩 JSON（工作流步骤）","contextMenu":false,"script":"compact-json.zsh","launcher":{}},
+    {"id":"write-clipboard","title":"写回剪贴板（工作流步骤）","icon":"doc.on.clipboard","contextMenu":false,"script":"write-clipboard.zsh","launcher":{}}
+  ],
+  "workflows": [
+    {"id":"format-clipboard-json","title":"剪贴板 JSON 格式化","steps":[{"action":"read-clipboard"},{"action":"format-json"},{"action":"write-clipboard"}]},
+    {"id":"compact-clipboard-json","title":"剪贴板 JSON 压缩","steps":[{"action":"read-clipboard"},{"action":"compact-json"},{"action":"write-clipboard"}]}
+  ]
+}

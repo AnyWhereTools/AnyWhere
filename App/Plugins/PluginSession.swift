@@ -11,7 +11,11 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
     private let pagePath: String
     let id = UUID().uuidString.lowercased()
     @Published var error: String?
-    private(set) var closed = false
+    @Published private(set) var closed = false
+    var onBack: (() -> Void)?
+    let workflowInput: JSONValue?
+    private let onComplete: ((JSONValue) -> Void)?
+    private var submitted = false
     private var task: PluginTask?
     private var taskID: String?
     private var result: PluginTaskResult?
@@ -20,8 +24,10 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
     private lazy var dataStore = PluginDataStore(directory: PackManager.dataDirectory(entry.action.packID!))
     private(set) var webView: WKWebView!
 
-    init(entry: PluginLauncherEntry, invocation: PluginInvocation) {
+    init(entry: PluginLauncherEntry, invocation: PluginInvocation, workflowInput: JSONValue? = nil,
+         onComplete: ((JSONValue) -> Void)? = nil) {
         self.entry = entry; self.invocation = invocation
+        self.workflowInput = workflowInput; self.onComplete = onComplete
         pagePath = URL(fileURLWithPath: "/" + entry.definition.ui!.entry).standardizedFileURL.path
         super.init()
         let configuration = WKWebViewConfiguration()
@@ -79,7 +85,26 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
             var response: Any = NSNull()
             switch method {
             case "host.getInvocation": response = try encoded(invocation)
-            case "host.back": PluginLauncherController.shared.back()
+            case "workflow.context":
+                response = ["active": workflowInput != nil, "input": try encoded(workflowInput ?? .null)]
+            case "workflow.complete":
+                guard workflowInput != nil, let onComplete else { throw PluginError(.denied, "This tool is not running in a workflow.") }
+                guard !submitted else { throw PluginError(.busy, "This step already submitted its output.") }
+                guard task == nil else { throw PluginError(.busy, "Wait for the current task to finish.") }
+                guard let raw = params["output"] else { throw PluginError(.invalidArguments, "Expected step output.") }
+                let output = try value(raw)
+                submitted = true
+                replyHandler(["result": NSNull()], nil)
+                DispatchQueue.main.async { [weak self] in
+                    guard self?.closed == false else { return }
+                    onComplete(output)
+                }
+                return
+            case "host.back":
+                // Reply before tearing down this WebView and its bridge.
+                replyHandler(["result": NSNull()], nil)
+                DispatchQueue.main.async { [weak self] in self?.onBack?() }
+                return
             case "host.error": error = String((params["message"] as? String ?? "JavaScript error").prefix(2000))
             case "config.get":
                 let fields = entry.definition.settings.filter { $0.type != .password }
@@ -199,6 +224,7 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
       window.anywhere = Object.freeze({
         onEnter: callback => { let active = true; context.then(value => { if (active) callback(value); }); return () => { active = false; }; },
         getInvocation: () => context,
+        workflow: {context: () => request('workflow.context'), complete: output => request('workflow.complete', {output})},
         config: {get: () => request('config.get')},
         storage: {get: key => request('storage.get', {key}), set: (key, value) => request('storage.set', {key, value}), remove: key => request('storage.remove', {key})},
         clipboard: {writeText: text => request('clipboard.writeText', {text})},

@@ -40,7 +40,7 @@ your-pack/
       "title": "Copy file name",  // 必填，右键菜单标题
       "icon": "doc.on.doc",       // 可选，默认 bolt
       "script": "actions/copy-basename.zsh", // 必填，包内相对路径
-      "targets": "files",         // 可选：files / folders / any / container，默认 any
+      "targets": "files",         // 可选：files / folders / any / container / foldersAndContainer，默认 any
       "utis": ["public.image"],    // 可选，默认 []，按 UTI 类型包含关系匹配
       "extensions": ["xlog"],     // 可选，普通后缀，忽略大小写；与 UTI 为「或」
       "filenamePattern": "device-.*\\.(png|xlog)", // 可选，完整文件名正则，作为额外限制
@@ -80,6 +80,24 @@ your-pack/
 
 完整清单、SDK、后端协议、配额、更新和卸载语义见[中文 UI 开发文档](plugin-ui.zh.md)及[文本工具示例](../examples/ui-tool-pack/README.zh.md)。旧的纯脚本动作继续使用原有执行方式。
 
+<a id="same-pack-workflows"></a>
+
+### 同包工作流（当前实现）
+
+在 `actions` 同级可添加 `workflows` 数组。示例使用 schema 4，存在页面时使用 API 1，并需安装包含工作流支持的 AnyWhere；仅凭 schema/API 数字无法区分尚不支持此功能的旧 schema-4 构建。
+
+```json
+{"workflows":[{"id":"response-types","title":"接口响应 → TypeScript","steps":[
+  {"action":"extract"},{"action":"select"},{"action":"types"}
+]}]}
+```
+
+这是清单片段，需在本包 `actions` 中声明 `extract`、`select`、`types`。工作流 `id` 必须非空且在工作流之间唯一，`steps` 非空，每个 `action` 必须在同一清单内存在。目前没有包 ID 引用、依赖声明、公开入口契约或纯工作流包：`actions` 仍必须非空。Finder／工具／工作流分类由入口自动推导，不需要新增 `type` 字段。
+
+包详情提供独立的工作流开关与「运行」按钮，导入后默认停用。启用后可按名称搜索，即使组成步骤的独立搜索入口未开启也能执行。脚本自动运行，纯 UI 动作等待 `anywhere.workflow.complete`，同时有 UI 和脚本的动作在流程中执行脚本。首步接收启动参数字符串，随后每步接收前一步 JSON 输出，首次失败即停止。桥接、生命周期和限制见[UI 开发文档](plugin-ui.zh.md)，可导入例子见[脚本工作流](../examples/tool-panel-demo/README.zh.md)和[交互工具链](../examples/tool-chain-demo/README.zh.md)。
+
+更新时新增／变更的工作流，或步骤能力扩大的工作流，会被停用以供重新审阅；定义保持不变时保留启用状态。跨开发者、跨扩展包组合**尚未实现**；[开发设计与实施计划](cross-pack-workflows.zh.md)中的未来字段不能用于当前客户端。
+
 ### `id`：保持稳定
 
 AnyWhere 按动作 `id` 识别更新前后的同一个动作，并保留启用状态。修改 `id` 会被视为删除旧动作并新增一个默认禁用的动作。建议使用稳定的英文小写短横线名称，例如 `decode-xlog`。
@@ -96,8 +114,9 @@ AnyWhere 按动作 `id` 识别更新前后的同一个动作，并保留启用�
 | `folders` | 选中一个或多个文件夹 |
 | `any` | 选中文件、文件夹或两者混合 |
 | `container` | 在目录空白处右键，没有选中项 |
+| `foldersAndContainer` | 选中一个或多个文件夹，或在目录空白处右键；不包含文件 |
 
-`container` 与其余三种选中项场景互斥，根据动作用途选择一种。
+同一动作需要同时出现在文件夹和空白处时，使用 `foldersAndContainer`。选中数量、UTI 和名称筛选仅作用于选中的文件夹；空白处不应用这些筛选，脚本收到当前目录路径。
 
 ### `utis`：系统文件类型
 
@@ -202,6 +221,7 @@ Xlog Decoder 的[清单](../examples/xlog-decoder-pack/manifest.json)将 `PRIVAT
 | `$1 … $n` | 选中项的绝对路径；`container` 动作收到目录路径 |
 | `ANYWHERE_PATHS` | 全部路径，以换行分隔 |
 | `ANYWHERE_VARIANT` | 选中的子菜单值；没有子菜单时为空 |
+| `ANYWHERE_FINDER_PATH` | 当前激活的 Finder 目录；没有目录时为用户主目录 |
 | `ANYWHERE_DATA` | AnyWhere 数据目录，可保存脚本状态 |
 | `ANYWHERE_TEMPLATES` | 模板目录 |
 | `ANYWHERE_TERMINAL` / `ANYWHERE_EDITOR` | 用户已配置的默认终端／编辑器 bundle ID |

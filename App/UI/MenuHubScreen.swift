@@ -71,7 +71,7 @@ struct ScreenMenuHub: View {
             HStack(spacing: 0) {
                 sidebar
                     .frame(width: 326)
-                    .background(.regularMaterial)
+                    .background(AWColor.content)
                     .overlay(alignment: .trailing) {
                         Rectangle().fill(AWColor.separator).frame(width: 0.5)
                     }
@@ -107,22 +107,19 @@ struct ScreenMenuHub: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 9) {
                 HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 13))
-                        .foregroundStyle(AWColor.label2)
-                    Text(String(localized: "menu.sidebarTitle"))
-                        .font(.system(size: 13, weight: .semibold))
+                    Text(String(localized: "settings.tab.contextMenu"))
+                        .font(.system(size: 17, weight: .semibold))
                     Spacer(minLength: 0)
-                    Text(String(localized: "menu.dragToSortClickToEdit"))
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(AWColor.label3)
                 }
+                Text(String(localized: "menu.dragToSortClickToEdit"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(AWColor.label2)
                 Segmented([String(localized: "menu.filterAll"), String(localized: "menu.filterAnyWhereOnly"), String(localized: "menu.filterSystemOnly")], selection: $filter)
                 ContextSim(selection: $simContext)
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 12)
-            .padding(.bottom, 10)
+            .padding(18)
+
+            Divider()
 
             ScrollView {
                 menuPreview
@@ -183,7 +180,8 @@ struct ScreenMenuHub: View {
         .padding(.vertical, 6)
         .background(AWColor.content)
         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-        .shadow(color: .black.opacity(0.22), radius: 14, x: 0, y: 8)
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+            .stroke(AWColor.hairline, lineWidth: 0.5))
     }
 
     // ANYWHERE 区(●)

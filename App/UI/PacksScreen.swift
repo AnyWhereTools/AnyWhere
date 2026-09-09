@@ -373,20 +373,25 @@ struct PackRow: View {
 
             if !pack.manifest.workflows.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Workflows").font(.caption).foregroundStyle(AWColor.label2)
+                    Text(String(localized: "panel.kind.workflow")).font(.caption).foregroundStyle(AWColor.label2)
                     ForEach(pack.manifest.workflows, id: \.id) { workflow in
                         HStack {
                             Image(systemName: "arrow.triangle.branch")
                             Text(workflow.title)
                             Spacer()
+                            Toggle(String(localized: "shortcuts.enabled"), isOn: Binding(
+                                get: { (try? manager.preferences.isEnabled(actionID: PackManager.workflowUUID(packKey: pack.key, workflowID: workflow.id))) == true },
+                                set: { enabled in
+                                    do { try manager.setWorkflowEnabled(enabled, packKey: pack.key, workflowID: workflow.id) }
+                                    catch { configurationError = error.localizedDescription }
+                                }))
+                                .toggleStyle(.switch).controlSize(.small)
                             AWButton("运行", systemImage: "play.fill", kind: .plain, size: .sm) {
-                                let selected = workflow.steps.compactMap { step in
-                                    actions.first { action in
-                                        pack.manifest.actions.first { $0.id == step.action }.map { PackManager.actionUUID(packKey: pack.key, packActionID: $0.id) == action.id } ?? false
-                                    }
+                                if let entry = manager.workflowEntry(packKey: pack.key, workflowID: workflow.id) {
+                                    PluginLauncherController.shared.openWorkflow(entry)
                                 }
-                                ActionRunner().runWorkflow(actions: selected) { _ in }
                             }
+                            .disabled((try? manager.preferences.isEnabled(actionID: PackManager.workflowUUID(packKey: pack.key, workflowID: workflow.id))) != true)
                         }
                         .padding(.horizontal, 12).padding(.vertical, 5)
                     }

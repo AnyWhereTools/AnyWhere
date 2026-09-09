@@ -1,0 +1,14 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><link rel="stylesheet" href="style.css">
+<title>JSON 面板 Demo</title>
+<header><div><h1>JSON 整理</h1><p>本地格式化，可与便笺窗口同时使用。</p></div><span class="badge">面板 Demo</span></header>
+<label for="json">JSON 内容</label><textarea id="json" spellcheck="false">{"name":"AnyWhere","tools":["便笺","JSON"],"ready":true}</textarea>
+<div class="toolbar"><button class="primary" id="format">格式化</button><button id="compact">压缩</button><button id="copy">复制内容</button></div>
+<p id="status" role="status"></p>
+<script>
+const input = document.getElementById('json'), status = document.getElementById('status');
+function format(space) { try { input.value = JSON.stringify(JSON.parse(input.value), null, space); status.textContent = '已完成'; } catch (error) { status.textContent = 'JSON 格式错误：' + error.message; } }
+document.getElementById('format').onclick = () => format(2);
+document.getElementById('compact').onclick = () => format(0);
+document.getElementById('copy').onclick = async () => { try { await anywhere.clipboard.writeText(input.value); status.textContent = '已复制'; } catch (error) { status.textContent = error.message; } };
+anywhere.onEnter(context => { if (context.argument) input.value = context.argument; });
+</script></html>

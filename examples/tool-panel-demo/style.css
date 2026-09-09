@@ -1,0 +1,21 @@
+:root { color-scheme: light dark; font: 14px -apple-system, BlinkMacSystemFont, sans-serif; color: #25262b; background: #f6f6f8; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px; }
+header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: -.5px; }
+p { margin: 0; color: #72747d; line-height: 1.5; }
+.badge { color: #5755be; background: #e9e8fc; border-radius: 8px; padding: 6px 10px; font-size: 12px; }
+label { display: block; margin: 16px 0 8px; font-weight: 600; }
+textarea { width: 100%; height: 210px; resize: vertical; padding: 14px; font: 14px/1.6 ui-monospace, monospace; border: 1px solid #d6d7df; border-radius: 12px; background: #fff; color: inherit; }
+textarea:focus, button:focus-visible { outline: 3px solid #8885e8; outline-offset: 2px; }
+.toolbar { display: flex; gap: 10px; align-items: center; margin-top: 14px; }
+button { border: 1px solid #d6d7df; border-radius: 9px; padding: 9px 14px; background: #fff; color: inherit; font: inherit; cursor: pointer; }
+button.primary { background: #625ddd; color: white; border-color: #625ddd; }
+output { margin-left: auto; color: #72747d; font-size: 12px; }
+#status { min-height: 22px; margin-top: 12px; }
+@media (prefers-color-scheme: dark) {
+  :root { background: #202125; color: #efeff3; }
+  textarea, button { background: #2b2c32; border-color: #474851; }
+  p, output { color: #adaeb8; }
+  .badge { background: #373450; color: #c5c1ff; }
+}

@@ -49,7 +49,7 @@ The JSONC example below includes explanatory comments. Actual manifests must be 
       "title": "Copy file name",  // required, non-empty — the context-menu label
       "icon": "doc.on.doc",       // optional SF Symbol, default "bolt"
       "script": "actions/copy-basename.zsh",  // required, safe relative path
-      "targets": "files",         // optional: files | folders | any | container (default any)
+      "targets": "files",         // optional: files | folders | any | container | foldersAndContainer (default any)
       "utis": ["public.image"],   // optional UTI filter (default []), UTType conformance match
       "extensions": ["xlog"],     // optional literal suffixes, case-insensitive; OR with utis
       "filenamePattern": "device-.*\\.(png|xlog)", // optional whole-filename regex; AND with type filters
@@ -97,6 +97,24 @@ See the [UI developer guide](plugin-ui.md) and [Text Toolbox](../examples/ui-too
 for the full SDK, task protocol, limits, update and uninstall behavior. Existing pure scripts
 retain their execution behavior.
 
+<a id="same-pack-workflows"></a>
+
+### Same-pack workflows (current implementation)
+
+Packs may add a top-level `workflows` array alongside `actions`. Use schema 4 and API 1 when pages are present, with an AnyWhere build containing workflow support; schema/API numbers alone do not distinguish older schema-4 builds without this feature.
+
+```json
+{"workflows":[{"id":"response-types","title":"Response → TypeScript","steps":[
+  {"action":"extract"},{"action":"select"},{"action":"types"}
+]}]}
+```
+
+This is a manifest fragment; declare `extract`, `select` and `types` in the same pack's `actions` array. Workflow IDs must be nonempty and unique among workflows, and `steps` must be nonempty. Each `action` must resolve inside that manifest. There is no current pack-ID reference, dependency declaration, public export contract or workflow-only pack: `actions` must still be nonempty. Categories (Finder, tools, workflows) are derived from entries rather than declared by a new `type` field.
+
+Workflows appear in pack details with independent enablement and Run controls; imports start disabled. Once enabled, their names are searchable, even when their steps' standalone search entries are disabled. Scripts execute automatically; UI-only actions wait for `anywhere.workflow.complete`. Actions declaring both UI and script execute the script in a workflow. The launch argument string feeds the first step; each JSON output feeds the next, and the first failure stops execution. See the [UI/bridge lifecycle and limits](plugin-ui.md) and the importable [script](../examples/tool-panel-demo/README.md) and [interactive](../examples/tool-chain-demo/README.md) examples.
+
+On update, a new/changed workflow or increased capabilities in one of its steps disables that workflow for review. Stable, unchanged definitions preserve enablement. Cross-developer, cross-pack composition is **not implemented**; the [design and implementation plan](cross-pack-workflows.md) describes future work, not valid manifest fields for current clients.
+
 ### `id` — keep it stable
 
 The `id` is how AnyWhere matches actions across updates to **preserve the enabled state**
@@ -111,14 +129,15 @@ must actually exist in the repo at that path.
 
 ### `targets`
 
-| value | shows when the user right-clicks… | mutually exclusive with |
-|-------|-----------------------------------|--------------------------|
-| `files` | one or more files selected (no folders) | `container` |
-| `folders` | one or more folders selected | `container` |
-| `any` | any selection (files and/or folders) | `container` |
-| `container` | empty space inside a folder (no selection) | the three above |
+| value | shows when the user right-clicks… |
+|-------|-----------------------------------|
+| `files` | one or more files selected (no folders) |
+| `folders` | one or more folders selected |
+| `any` | any selection (files and/or folders) |
+| `container` | empty space inside a folder (no selection) |
+| `foldersAndContainer` | one or more folders selected, or empty space inside a folder; excludes files |
 
-`container` and the selection kinds never appear together — pick the one that fits.
+Use `foldersAndContainer` for an action available on both folders and background. Selection-count, UTI and name filters apply only to selected folders. Background invocation ignores these filters and passes the current directory path to the script.
 
 ### `utis`
 
@@ -250,6 +269,7 @@ Pack scripts run exactly like built-in presets — under `/bin/zsh`, no executab
 | `$1 … $n` | absolute paths of the selected items (the container path for `container` actions) |
 | `ANYWHERE_PATHS` | all paths, newline-separated (handy for loops) |
 | `ANYWHERE_VARIANT` | the chosen submenu value (empty when there is no submenu) |
+| `ANYWHERE_FINDER_PATH` | active Finder directory, or the user's home directory when Finder has no directory |
 | `ANYWHERE_DATA` | absolute path to AnyWhere's data directory (persist state here) |
 | `ANYWHERE_TEMPLATES` | absolute path to the templates directory |
 | `ANYWHERE_TERMINAL` / `ANYWHERE_EDITOR` | preferred terminal / editor bundle ID, when configured |

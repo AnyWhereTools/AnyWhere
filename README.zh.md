@@ -47,6 +47,12 @@ AnyWhere 是一个**脚本优先**、开源(MIT)的菜单栏应用:加你自己�
 
 插件可保存独立数据、调用剪贴板，并通过可取消任务运行包内脚本或 Go/Rust 二进制，无需内置 Node。详见[自定义 UI 开发文档](docs/plugin-ui.zh.md)和[可导入的文本工具示例](examples/ui-tool-pack/README.zh.md)。这部分使用清单版本 4；版本 1–3 的包继续兼容。
 
+搜索还支持全拼、拼音首字母、已启用的自建快捷指令、同包工作流和已安装应用。「快捷指令」可创建本地脚本，设置名称、关键词和独立全局快捷键，与 Finder 右键动作分开。
+
+工具页面可在普通独立窗口打开，带原生窗口按钮及工具栏重载。独立打开／重载会新建会话，需要保留的草稿应写入宿主存储。关闭工具面板会结束会话；独立窗口在切换其他应用后仍保留。详见[窗口生命周期](docs/plugin-ui.zh.md)。
+
+真实脚本组合见[剪贴板 JSON 工作流](examples/tool-panel-demo/README.zh.md)，交互 A → B → C 见[接口响应转 TypeScript](examples/tool-chain-demo/README.zh.md)。导入审阅后，在包详情中启用所需工具和工作流。目前工作流只能引用**同包工具**；跨开发者、跨扩展包组合的[设计与实施计划](docs/cross-pack-workflows.zh.md)明确标为尚未实现。
+
 ### 扩展包导入
 
 扩展包是根目录包含 `manifest.json` 和配套脚本的文件夹。在「扩展包 → 导入」粘贴 Git URL / `owner/repo`，或点击「选择本地文件夹…」，**本地包无需创建 Git 仓库**。AnyWhere 克隆或复制整个包，展示脚本和附带文件（包括 CLI）供审阅，导入后的动作默认**禁用**，由你逐个启用。
@@ -143,6 +149,9 @@ AnyWhere 使用独立的 `com.anywhere.app` 标识，配置保存在
 
 ## 文档与贡献
 
+- [UI、窗口与工作流 SDK](docs/plugin-ui.zh.md) · [TypeScript 类型声明](docs/sdk/anywhere.d.ts)
+- [脚本工作流 Demo](examples/tool-panel-demo/README.zh.md) · [交互工具链 Demo](examples/tool-chain-demo/README.zh.md)
+- [跨包工作流开发设计与实施计划——尚未实现](docs/cross-pack-workflows.zh.md)
 - [扩展包规范](docs/pack-spec.zh.md) · [基础示例包](examples/example-pack/README.zh.md) · [Xlog Decoder 包](examples/xlog-decoder-pack/README.zh.md)
 - [贡献指南](CONTRIBUTING.zh.md) · [发布流程](docs/RELEASING.zh.md) · [安全说明](SECURITY.zh.md)
 - Core 单元测试 + 预设脚本测试 + App/扩展编译检查在推送到 `main` 和提交 Pull Request 时由 CI 运行（`.github/workflows/ci.yml`）。

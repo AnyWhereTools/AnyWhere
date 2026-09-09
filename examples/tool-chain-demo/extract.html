@@ -1,0 +1,10 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>JSON 提取器</title><link rel="stylesheet" href="style.css">
+<body data-tool="extract">
+<header><div><h1>JSON 提取器</h1><p>从日志或说明中提取完整响应，交给下一工具。</p></div><span class="badge" id="mode">独立工具</span></header>
+<label for="input">包含 JSON 的文本</label><textarea id="input" spellcheck="false" placeholder="粘贴接口日志或点击填入示例"></textarea>
+<div class="toolbar"><button id="sample">填入示例</button><button class="primary" id="process">提取 JSON</button></div>
+<label for="choice">提取结果（多个响应时请选择）</label><select id="choice" disabled></select>
+<pre id="preview">提取后在这里预览。</pre>
+<div class="toolbar"><button id="copy" disabled>复制 JSON</button><button class="primary" id="next" hidden disabled>交给 B：选择节点</button></div>
+<p id="status" role="status"></p>
+<script src="tools.js"></script><script src="ui.js"></script></body></html>
