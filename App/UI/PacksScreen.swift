@@ -371,6 +371,28 @@ struct PackRow: View {
             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(AWColor.hairline, lineWidth: 0.5))
 
+            if !pack.manifest.workflows.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Workflows").font(.caption).foregroundStyle(AWColor.label2)
+                    ForEach(pack.manifest.workflows, id: \.id) { workflow in
+                        HStack {
+                            Image(systemName: "arrow.triangle.branch")
+                            Text(workflow.title)
+                            Spacer()
+                            AWButton("运行", systemImage: "play.fill", kind: .plain, size: .sm) {
+                                let selected = workflow.steps.compactMap { step in
+                                    actions.first { action in
+                                        pack.manifest.actions.first { $0.id == step.action }.map { PackManager.actionUUID(packKey: pack.key, packActionID: $0.id) == action.id } ?? false
+                                    }
+                                }
+                                ActionRunner().runWorkflow(actions: selected) { _ in }
+                            }
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 5)
+                    }
+                }
+            }
+
             // 按钮行
             if let configurationError { Text(configurationError).foregroundStyle(.red).font(.caption) }
             HStack(spacing: 8) {

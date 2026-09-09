@@ -59,11 +59,16 @@ final class ActionRunner: ActionRunning {
 
     @MainActor
     func run(action: MenuAction, variant: String?, urls: [URL]) {
-        run(action: action, variant: variant, urls: urls, invocation: nil)
+        run(action: action, variant: variant, urls: urls, invocation: nil, completion: nil)
     }
 
     @MainActor
     func run(action: MenuAction, variant: String?, urls: [URL], invocation: PluginInvocation?) {
+        run(action: action, variant: variant, urls: urls, invocation: invocation, completion: nil)
+    }
+
+    @MainActor
+    func run(action: MenuAction, variant: String?, urls: [URL], invocation: PluginInvocation?, completion: ((ExecutionOutcome) -> Void)?) {
         let title = action.title
         let kind = action.kind
         // Treat launcher input as one literal argument; never interpolate it into shell source.
@@ -98,6 +103,21 @@ final class ActionRunner: ActionRunning {
             Task { @MainActor in
                 ExecutionLog.shared.append(title: title, outcome: outcome)
                 if case .failure(let message) = outcome { Notifier.showFailure(title, message) }
+                completion?(outcome)
+            }
+        }
+    }
+
+    @MainActor
+    func runWorkflow(actions: [MenuAction], variant: String? = nil, urls: [URL] = [], invocation: PluginInvocation? = nil,
+                     completion: @escaping (ExecutionOutcome) -> Void) {
+        guard let action = actions.first else { completion(.success(summary: nil)); return }
+        run(action: action, variant: variant, urls: urls, invocation: invocation) { [weak self] outcome in
+            guard let self else { return }
+            switch outcome {
+            case .failure: completion(outcome)
+            case .success:
+                self.runWorkflow(actions: Array(actions.dropFirst()), variant: variant, urls: urls, invocation: invocation, completion: completion)
             }
         }
     }
