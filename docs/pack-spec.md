@@ -330,8 +330,22 @@ arrive disabled), and only applies after you confirm. Enabled state is preserved
 ## Publishing & discovery
 
 Any conforming public git repo is importable by URL — no registry, no submission. To make a
-pack discoverable, add the GitHub **topic** `anywhere-pack` to your repository; AnyWhere's
-“Browse community packs” opens that topic search.
+pack discoverable in the app, submit a `registry/<id>.json` PR to
+[AnyWhere Bazaar](https://github.com/appdev/anywhere-bazaar). The marketplace reads its
+generated `catalog.json`; a GitHub topic no longer controls in-app discovery.
+
+Marketplace installs and updates fetch the catalog's full Git commit, verify checkout
+and manifest, and retain the existing source-review and default-disabled flow.
+Legacy HTTPS GitHub installs match by canonical repository without changing pack keys,
+action IDs, enablement or user data; the next marketplace update saves `catalogID`.
+A removed or remapped bound entry reports an error and retains the installed copy,
+without silently following repository HEAD. Unregistered manual imports still update
+from their repository, and local imports reload their source folder.
+
+Catalog failures are visible and retryable; discovery never falls back to topic search.
+Schema 1 catalogs are limited to 1000 packages and 2 MiB, with unique IDs/repositories
+and full commit revisions. The selected revision remains fixed through update review
+and installation.
 
 **Security note for authors and users:** pack scripts run with the user's privileges. Keep
 scripts auditable and dependency-free; users should review every script before enabling it and

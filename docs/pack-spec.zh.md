@@ -258,6 +258,10 @@ Git 包通过「检查更新」比较远端 `HEAD` 与已安装版本的 SHA。�
 
 ## 发布与社区发现
 
-符合规范的公开 Git 仓库可直接按 URL 导入，无需注册或提交审核。为仓库添加 GitHub topic **`anywhere-pack`**，即可通过 AnyWhere 的社区扩展包入口发现。
+符合规范的 Git 仓库仍可直接按 URL 导入，本地文件夹导入也保留。应用内「插件市场」读取 [AnyWhere Bazaar](https://github.com/appdev/anywhere-bazaar) 的 `catalog.json`。开发者通过 PR 添加 `registry/<id>.json`，审核合并后进入市场；GitHub topic 不再决定应用内上架。
+
+市场安装及更新使用目录记录的完整 Git commit，并验证实际 checkout 和 manifest，再进入源码审查。安装默认禁用；更新增加权限时仍需重新启用。旧版同源 HTTPS GitHub 安装会按仓库匹配市场条目，保留安装目录、动作标识、启用状态及用户数据；下一次市场更新保存 `catalogID`。已绑定条目下架或更换仓库时会提示错误，保留已安装版本，不自动改用仓库 HEAD。未登记的手动导入包仍按原仓库检查更新。本地包继续从原文件夹重新加载。
+
+目录加载或校验失败会显示错误，可重试；不会自动切回 topic 搜索。目录当前支持 schemaVersion 1、最多 1000 个条目和 2 MiB，拒绝重复 ID/仓库及非完整 commit。用户选择的版本会一直保留到更新差异审查和安装完成。
 
 脚本以当前用户权限执行。作者应保持脚本易于审阅、尽量减少依赖；用户应在启用前检查脚本和附带文件，只导入可信来源。更多说明见[安全说明](../SECURITY.zh.md)。

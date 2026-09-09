@@ -1,6 +1,12 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "discover.finder": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Finder actions"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"右键菜单"}}}},
+    "discover.workflow": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Workflows"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"工作流"}}}},
+    "discover.tool": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Tools"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"工具"}}}},
+    "discover.allTypes": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"All categories"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"全部类型"}}}},
+    "discover.type": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Category"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"分类"}}}},
+    "discover.search": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Search name, repository or description"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"搜索名称、仓库或描述"}}}},
     "shortcuts.search": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Search name or keyword"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"搜索名称或关键词"}}}},
     "shortcuts.noMatches": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"No matching shortcuts"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"没有匹配的快捷指令"}}}},
     "panel.kind.action": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Action"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"动作"}}}},
@@ -3844,13 +3850,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Browse Community"
+            "value": "Plugin Marketplace"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "浏览社区包"
+            "value": "插件市场"
           }
         }
       }
@@ -4836,13 +4842,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Discover Community Packs"
+            "value": "Plugin Marketplace"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "发现社区包"
+            "value": "插件市场"
           }
         }
       }
@@ -4932,13 +4938,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No repositories tagged \"anywhere-pack\" found yet. Be the first — add the topic to your pack repo!"
+            "value": "No matching packages. Try a different search or category."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "还没有带 anywhere-pack 标记的社区包。给你的扩展包仓库加上这个 topic 就能上榜!"
+            "value": "没有匹配的插件，请调整搜索或分类。"
           }
         }
       }

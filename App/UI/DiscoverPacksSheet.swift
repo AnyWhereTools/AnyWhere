@@ -1,24 +1,34 @@
-// DiscoverPacksSheet.swift — 在 App 内发现社区扩展包(扫描 GitHub `anywhere-pack` topic)。
-// 列表里点「导入」→ 交给 PackImportSheet 预填 owner/repo,仍走完整审查流程。
+// Bazaar discovery reuses the existing source-review import flow.
 
 import SwiftUI
 import AppKit
 
 struct DiscoverPacksSheet: View {
-    let installedRepos: Set<String>     // 已装的 "owner/repo"(小写)
-    let onImport: (String) -> Void      // 传 full_name
+    let installedRepos: Set<String>     // Canonical HTTPS repository URLs, lowercase.
+    let onImport: (CatalogPack) -> Void
     let onClose: () -> Void
 
     private enum Phase: Equatable {
         case loading
-        case loaded([DiscoveredPack])
+        case loaded([CatalogPack])
         case failed(String)
     }
     @State private var phase: Phase = .loading
+    @State private var query = ""
+    @State private var type = ""
 
     var body: some View {
         VStack(spacing: 0) {
             header
+            HStack {
+                TextField(String(localized: "discover.search"), text: $query)
+                Picker(String(localized: "discover.type"), selection: $type) {
+                    Text(String(localized: "discover.allTypes")).tag("")
+                    Text(String(localized: "discover.tool")).tag("tool")
+                    Text(String(localized: "discover.workflow")).tag("workflow")
+                    Text(String(localized: "discover.finder")).tag("finder")
+                }.frame(width: 150)
+            }.padding(.horizontal, 20).padding(.vertical, 10)
             content
             footer
         }
@@ -33,7 +43,7 @@ struct DiscoverPacksSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(String(localized: "discover.title"))
                     .font(.system(size: 14.5, weight: .semibold))
-                Text("topic: \(PackDiscovery.topic)")
+                Text("AnyWhere Bazaar")
                     .font(.system(size: 11.5, design: .monospaced))
                     .foregroundStyle(AWColor.label2)
             }
@@ -56,10 +66,10 @@ struct DiscoverPacksSheet: View {
                 Text(msg).font(.system(size: 11)).foregroundStyle(AWColor.label3).multilineTextAlignment(.center)
                 HStack(spacing: 8) {
                     AWButton(String(localized: "discover.retry"), size: .sm, action: load)
-                    AWButton(String(localized: "discover.openInBrowser"), kind: .plain, size: .sm, action: openTopic)
+                    AWButton(String(localized: "discover.openInBrowser"), kind: .plain, size: .sm, action: openMarketplace)
                 }.padding(.top, 4)
             }
-        case .loaded(let packs) where packs.isEmpty:
+        case .loaded(let packs) where filtered(packs).isEmpty:
             centered {
                 Image(systemName: "shippingbox").font(.system(size: 34)).foregroundStyle(AWColor.label3)
                 Text(String(localized: "discover.empty")).font(.system(size: 12.5)).foregroundStyle(AWColor.label2)
@@ -68,7 +78,7 @@ struct DiscoverPacksSheet: View {
         case .loaded(let packs):
             ScrollView {
                 VStack(spacing: 0) {
-                    ForEach(Array(packs.enumerated()), id: \.element.id) { i, pack in
+                    ForEach(Array(filtered(packs).enumerated()), id: \.element.id) { i, pack in
                         if i > 0 { Rectangle().fill(AWColor.separator).frame(height: 0.5) }
                         row(pack)
                     }
@@ -78,25 +88,30 @@ struct DiscoverPacksSheet: View {
         }
     }
 
-    private func row(_ pack: DiscoveredPack) -> some View {
-        let installed = installedRepos.contains(pack.fullName.lowercased())
+    private func filtered(_ packs: [CatalogPack]) -> [CatalogPack] {
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return packs.filter {
+            (type.isEmpty || $0.types.contains(type)) &&
+            (text.isEmpty || [$0.name, $0.repo, $0.description ?? ""].contains { $0.localizedCaseInsensitiveContains(text) })
+        }
+    }
+
+    private func row(_ pack: CatalogPack) -> some View {
+        let installed = installedRepos.contains(pack.repository.lowercased())
         return HStack(spacing: 11) {
-            AppIcon("shippingbox", size: 30, hue: .teal)
+            AppIcon(pack.icon, size: 30, hue: .teal)
             VStack(alignment: .leading, spacing: 1) {
-                Text(pack.fullName).font(.system(size: 13, weight: .semibold)).foregroundStyle(AWColor.label)
+                Text(pack.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(AWColor.label)
+                Text(pack.repo).font(.system(size: 10.5)).foregroundStyle(AWColor.label3)
                 if let d = pack.description, !d.isEmpty {
                     Text(d).font(.system(size: 11.5)).foregroundStyle(AWColor.label2).lineLimit(2)
                 }
             }
             Spacer(minLength: 8)
-            HStack(spacing: 3) {
-                Image(systemName: "star.fill").font(.system(size: 10)).foregroundStyle(AWColor.label3)
-                Text("\(pack.stargazersCount)").font(.system(size: 11)).foregroundStyle(AWColor.label3)
-            }
             if installed {
                 Badge(String(localized: "discover.installed"), tone: .green)
             } else {
-                AWButton(String(localized: "discover.import"), kind: .primary, size: .sm) { onImport(pack.fullName) }
+                AWButton(String(localized: "discover.import"), kind: .primary, size: .sm) { onImport(pack) }
             }
         }
         .padding(.vertical, 8)
@@ -106,7 +121,7 @@ struct DiscoverPacksSheet: View {
         VStack(spacing: 0) {
             Rectangle().fill(AWColor.separator).frame(height: 0.5)
             HStack(spacing: 9) {
-                AWButton(String(localized: "discover.openInBrowser"), systemImage: "arrow.up.right.square", kind: .plain, size: .sm, action: openTopic)
+                AWButton(String(localized: "discover.openInBrowser"), systemImage: "arrow.up.right.square", kind: .plain, size: .sm, action: openMarketplace)
                 Spacer(minLength: 0)
                 AWButton(String(localized: "discover.close"), size: .sm, action: onClose)
             }
@@ -123,7 +138,7 @@ struct DiscoverPacksSheet: View {
         phase = .loading
         Task {
             do {
-                let packs = try await PackDiscovery.search()
+                let packs = try await PackDiscovery.catalog().packages
                 await MainActor.run { phase = .loaded(packs) }
             } catch {
                 await MainActor.run { phase = .failed(error.localizedDescription) }
@@ -131,9 +146,7 @@ struct DiscoverPacksSheet: View {
         }
     }
 
-    private func openTopic() {
-        if let url = URL(string: "https://github.com/topics/\(PackDiscovery.topic)") {
-            NSWorkspace.shared.open(url)
-        }
+    private func openMarketplace() {
+        NSWorkspace.shared.open(PackDiscovery.website)
     }
 }

@@ -80,10 +80,12 @@ struct PackImportSheet: View {
     let onClose: () -> Void
 
     /// initialRepo:从「发现社区包」点导入时预填仓库(用户仍需走完整审查流程)。
-    init(packManager: PackManager, initialRepo: String = "", onClose: @escaping () -> Void) {
+    let catalogEntry: CatalogPack?
+    init(packManager: PackManager, initialRepo: String = "", catalogEntry: CatalogPack? = nil, onClose: @escaping () -> Void) {
         self._packManager = ObservedObject(wrappedValue: packManager)
         self.onClose = onClose
-        self._urlText = State(initialValue: initialRepo)
+        self.catalogEntry = catalogEntry
+        self._urlText = State(initialValue: catalogEntry?.repository ?? initialRepo)
     }
 
     enum Phase: Equatable {
@@ -139,7 +141,11 @@ struct PackImportSheet: View {
                     .foregroundStyle(AWColor.label2)
                 AWField($urlText, placeholder: "lihua/anywhere-dev-tools", mono: true)
                     .frame(maxWidth: .infinity)
-                    .disabled(isCloning)
+                    .disabled(isCloning || catalogEntry != nil)
+                if let catalogEntry {
+                    Text("Bazaar · \(catalogEntry.id) · \(catalogEntry.revision.prefix(12))")
+                        .font(.system(size: 11, design: .monospaced)).foregroundStyle(AWColor.label2)
+                }
                 HStack(spacing: 6) {
                     Image(systemName: "info.circle")
                         .font(.system(size: 13))
@@ -151,7 +157,7 @@ struct PackImportSheet: View {
                 AWButton(String(localized: "packImport.chooseLocalFolder"), systemImage: "folder") {
                     chooseLocalFolder()
                 }
-                .disabled(isCloning)
+                .disabled(isCloning || catalogEntry != nil)
                 Text(String(localized: "packImport.localFolderHint"))
                     .font(.system(size: 11))
                     .foregroundStyle(AWColor.label3)
@@ -199,7 +205,7 @@ struct PackImportSheet: View {
             let sel = actions.first(where: { $0.id == selectedActionID }) ?? actions.first
             VStack(spacing: 0) {
                 SheetHead(step: 2, title: String(format: String(localized: "packImport.reviewTitle"), cloned.manifest.name),
-                          sub: "\(cloned.repo) · \(cloned.isLocal ? String(localized: "packs.localSource") : cloned.commitSHA)")
+                          sub: "\(cloned.repo) · \(cloned.isLocal ? String(localized: "packs.localSource") : String(cloned.commitSHA.prefix(12)))")
                 VStack(spacing: 0) {
                     Banner(String(localized: "packImport.reviewWarning"),
                            tone: .red)
@@ -324,7 +330,7 @@ struct PackImportSheet: View {
                         Text(cloned.manifest.name).font(.system(size: 15, weight: .semibold))
                         Text(cloned.isLocal
                              ? String(format: String(localized: "packImport.actionsLocal"), cloned.manifest.actions.count)
-                             : String(format: String(localized: "packImport.actionsCommit"), cloned.manifest.actions.count, cloned.commitSHA))
+                             : String(format: String(localized: "packImport.actionsCommit"), cloned.manifest.actions.count, String(cloned.commitSHA.prefix(12))))
                             .font(.system(size: 11.5, design: .monospaced))
                             .foregroundStyle(AWColor.label2)
                     }
@@ -464,7 +470,7 @@ struct PackImportSheet: View {
                 if let localDirectory {
                     result = try await packManager.prepareLocalDirectory(localDirectory)
                 } else {
-                    result = try await packManager.clone(input)
+                    result = try await packManager.clone(input, catalogEntry: catalogEntry)
                 }
                 guard !Task.isCancelled else {
                     packManager.discard(tempDir: result.tempDir)
@@ -513,6 +519,7 @@ struct PackImportSheet: View {
 struct PackUpdateSheet: View {
     @ObservedObject var packManager: PackManager
     let pack: InstalledPack
+    var available: PackUpdateAvailable? = nil
     let onClose: () -> Void
 
     enum Phase: Equatable {
@@ -523,6 +530,7 @@ struct PackUpdateSheet: View {
 
     @State private var phase: Phase = .loading
     @State private var update: PackUpdate?
+    @State private var loadTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -535,6 +543,7 @@ struct PackUpdateSheet: View {
         .frame(width: phase == .ready ? 720 : 470, height: 500)
         .background(AWColor.content)
         .onAppear(perform: load)
+        .onDisappear(perform: discardUpdate)
     }
 
     // MARK: loading
@@ -628,11 +637,11 @@ struct PackUpdateSheet: View {
             }
             Spacer(minLength: 0)
             HStack(spacing: 6) {
-                Badge(pack.commitSHA, tone: .gray)
+                Badge(String(pack.commitSHA.prefix(12)), tone: .gray)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(AWColor.label3)
-                Badge(update?.newSHA ?? "…", tone: .accent)
+                Badge(update.map { String($0.newSHA.prefix(12)) } ?? "…", tone: .accent)
             }
         }
         .padding(.horizontal, 20)
@@ -669,12 +678,14 @@ struct PackUpdateSheet: View {
     // MARK: 逻辑
 
     private func load() {
-        Task {
+        loadTask = Task {
             do {
-                let result = try await packManager.cloneUpdate(pack.key)
+                let result = try await packManager.cloneUpdate(pack.key, available: available)
+                guard !Task.isCancelled else { packManager.discard(tempDir: result.tempDir); return }
                 update = result
                 phase = .ready
             } catch {
+                guard !Task.isCancelled else { return }
                 phase = .error(error.localizedDescription)
             }
         }
@@ -692,9 +703,14 @@ struct PackUpdateSheet: View {
     }
 
     private func cancel() {
+        discardUpdate()
+        onClose()
+    }
+
+    private func discardUpdate() {
+        loadTask?.cancel(); loadTask = nil
         if let update { packManager.discard(tempDir: update.tempDir) }
         update = nil
-        onClose()
     }
 }
 

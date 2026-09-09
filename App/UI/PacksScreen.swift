@@ -48,7 +48,7 @@ struct ScreenPacks: View {
             PackImportSheet(packManager: packManager) { showImport = false }
         }
         .sheet(item: $updatingPack) { pack in
-            PackUpdateSheet(packManager: packManager, pack: pack) {
+            PackUpdateSheet(packManager: packManager, pack: pack, available: updates[pack.key]) {
                 updates[pack.key] = nil
                 updatingPack = nil
             }
@@ -60,18 +60,18 @@ struct ScreenPacks: View {
         }
         .sheet(isPresented: $showDiscover) {
             DiscoverPacksSheet(
-                installedRepos: Set(packManager.packs.map { $0.repo.lowercased() }),
-                onImport: { repo in
+                installedRepos: Set(packManager.packs.filter { !$0.isLocal }.compactMap { PackCatalog.canonicalRepository($0.repoURL) }),
+                onImport: { entry in
                     showDiscover = false
                     // 顺序呈现两个 sheet:先关发现,再开导入(预填仓库,仍走完整审查)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        pendingImport = RepoToImport(repo: repo)
+                        pendingImport = RepoToImport(entry: entry)
                     }
                 },
                 onClose: { showDiscover = false })
         }
         .sheet(item: $pendingImport) { item in
-            PackImportSheet(packManager: packManager, initialRepo: item.repo) {
+            PackImportSheet(packManager: packManager, catalogEntry: item.entry) {
                 pendingImport = nil
                 packManager.reload()
             }
@@ -143,7 +143,7 @@ struct ScreenPacks: View {
     }
 
     private func browse() {
-        showDiscover = true   // App 内发现社区包(扫描 anywhere-pack topic),不再跳浏览器
+        showDiscover = true
     }
 
     private func openRepo(_ pack: InstalledPack) {
@@ -182,15 +182,23 @@ struct ScreenPacks: View {
         guard !checking else { return }
         checking = true
         Task {
-            var found: [String: PackUpdateAvailable] = [:]
-            for pack in packManager.packs {
-                if let upd = await packManager.checkUpdate(pack.key) {
-                    found[pack.key] = upd
+            defer { checking = false }
+            do {
+                let remote = packManager.packs.filter { !$0.isLocal }
+                guard !remote.isEmpty else { lastChecked = Date(); return }
+                let catalog = remote.contains { PackCatalog.canonicalRepository($0.repoURL) != nil }
+                    ? try await PackDiscovery.catalog() : PackCatalog(schemaVersion: 1, packages: [])
+                var found: [String: PackUpdateAvailable] = [:]
+                var failures: [String] = []
+                for pack in remote {
+                    do {
+                        if let upd = try await packManager.checkUpdate(pack.key, catalog: catalog) { found[pack.key] = upd }
+                    } catch { failures.append(pack.manifest.name + ": " + error.localizedDescription) }
                 }
-            }
-            updates = found
-            lastChecked = Date()
-            checking = false
+                updates = found
+                if failures.isEmpty { lastChecked = Date() }
+                else { throw PackCatalog.Failure(failures.joined(separator: "\n")) }
+            } catch { NSAlert(error: error).runModal() }
         }
     }
 
@@ -223,7 +231,7 @@ struct ScriptViewerTarget: Identifiable {
 
 struct RepoToImport: Identifiable {
     let id = UUID()
-    let repo: String
+    let entry: CatalogPack
 }
 
 // MARK: - PacksHeader(顶部操作条)
@@ -238,7 +246,7 @@ struct PacksHeader: View {
         HStack(spacing: 12) {
             AWButton(String(localized: "packs.importPack"), systemImage: "plus", kind: .primary, action: onImport)
             AWButton(String(localized: "packs.browseCommunity"), systemImage: "magnifyingglass", kind: .plain, action: onBrowse)
-            Text("topic: anywhere-pack")
+            Text("AnyWhere Bazaar")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(AWColor.label3)
             Spacer(minLength: 0)
@@ -314,7 +322,7 @@ struct PackRow: View {
                             Badge(String(localized: "packs.updateAvailable"), tone: .accent)
                         }
                     }
-                    Text("\(pack.repo) · \(pack.isLocal ? String(localized: "packs.localSource") : pack.commitSHA)")
+                    Text("\(pack.repo) · \(pack.isLocal ? String(localized: "packs.localSource") : String(pack.commitSHA.prefix(12)))")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(AWColor.label2)
                 }

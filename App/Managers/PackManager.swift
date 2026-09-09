@@ -29,6 +29,7 @@ struct ClonedPack {
     let scripts: [String: String]   // PackAction.id → 脚本源码(读不到则缺省)
     var extraFiles: [PackFile] = []  // manifest 未声明、需审查的文件(隐藏脚本/可执行/二进制)
     var isLocal = false
+    var catalogID: String? = nil
 }
 
 /// `checkUpdate` 结果:远端 HEAD 与本地 commitSHA 不同。
@@ -36,6 +37,7 @@ struct PackUpdateAvailable: Equatable {
     let key: String
     let currentSHA: String
     let remoteSHA: String
+    var catalogEntry: CatalogPack? = nil
 }
 
 /// `cloneUpdate` 的产物:新克隆 + 与本地的逐文件 diff(本期为「按文件给出 old/new 全文 + 变更统计」)。
@@ -48,6 +50,7 @@ struct PackUpdate {
     let newRepo: String
     let diffsByFile: [FileDiff]      // 脚本(相对路径)的新旧全文,UI 端渲染逐行
     let newScripts: [String: String] // 新动作脚本源码(审查用)
+    var catalogID: String? = nil
 
     struct FileDiff: Equatable {
         let path: String         // 相对仓库根
@@ -138,30 +141,30 @@ final class PackManager: ObservableObject {
 
     // MARK: - Import: step 1 — clone (NEVER executes scripts)
 
-    func clone(_ urlOrShorthand: String) async throws -> ClonedPack {
+    func clone(_ urlOrShorthand: String, catalogEntry: CatalogPack? = nil) async throws -> ClonedPack {
         let repoURL = Self.normalizeRepoURL(urlOrShorthand)
+        if let catalogEntry {
+            try catalogEntry.validate()
+            guard PackCatalog.canonicalRepository(repoURL) == catalogEntry.repository.lowercased() else {
+                throw PackCatalog.Failure("The selected Bazaar source does not match the import URL.")
+            }
+        }
         let repo = Self.repoDisplay(from: repoURL)
         let key = Self.sanitizeKey(repo)
 
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("anywhere-pack-\(UUID().uuidString)", isDirectory: true)
 
-        // git clone --depth 1 — pure fetch, no script execution.
-        let clone = await Self.git(["clone", "--depth", "1", repoURL, tempDir.path], cwd: nil)
-        guard clone.exitCode == 0 else {
-            try? FileManager.default.removeItem(at: tempDir)
-            throw PackError.gitFailed(clone.stderr.isEmpty ? clone.stdout : clone.stderr)
-        }
-
         do {
+            let sha = try await Self.checkout(repoURL: repoURL, revision: catalogEntry?.revision, into: tempDir)
             let (manifest, scripts) = try Self.readManifestAndScripts(in: tempDir)
+            try catalogEntry?.validate(manifest: manifest)
             // 安全网:列出 manifest 之外的文件(脚本可经相对路径 source 它们),逼审查者看见隐藏的兄弟文件。
             let extras = PackInspector.undeclaredFiles(inDirectory: tempDir,
                                                        declared: Set(manifest.actions.compactMap(\.script)))
-            let sha = await Self.shortHEAD(in: tempDir)
             return ClonedPack(tempDir: tempDir, key: key, manifest: manifest,
                               repoURL: repoURL, repo: repo, commitSHA: sha,
-                              scripts: scripts, extraFiles: extras)
+                              scripts: scripts, extraFiles: extras, catalogID: catalogEntry?.id)
         } catch {
             try? FileManager.default.removeItem(at: tempDir)
             throw error
@@ -225,7 +228,7 @@ final class PackManager: ObservableObject {
         var records = Self.loadInstalled().filter { $0.key != cloned.key }
         records.append(InstalledRecord(key: cloned.key, repoURL: cloned.repoURL,
                                        repo: cloned.repo, commitSHA: cloned.commitSHA,
-                                       manifest: cloned.manifest, isLocal: cloned.isLocal ? true : nil))
+                                       manifest: cloned.manifest, isLocal: cloned.isLocal ? true : nil, catalogID: cloned.catalogID))
         try Self.saveInstalled(records)
 
         appState().update(config)
@@ -402,22 +405,25 @@ final class PackManager: ObservableObject {
 
     // MARK: - Update: check (compare remote HEAD SHA vs local)
 
-    func checkUpdate(_ key: String) async -> PackUpdateAvailable? {
+    func checkUpdate(_ key: String, catalog: PackCatalog) async throws -> PackUpdateAvailable? {
         guard let rec = Self.loadInstalled().first(where: { $0.key == key }) else { return nil }
         guard rec.isLocal != true else { return nil }
+        if let entry = try catalog.entry(repository: rec.repoURL, catalogID: rec.catalogID) {
+            guard !Self.matchesRevision(rec.commitSHA, entry.revision) else { return nil }
+            return PackUpdateAvailable(key: key, currentSHA: rec.commitSHA, remoteSHA: entry.revision, catalogEntry: entry)
+        }
         // ls-remote avoids touching the working tree; compares the default-branch HEAD.
         let result = await Self.git(["ls-remote", rec.repoURL, "HEAD"], cwd: nil)
-        guard result.exitCode == 0 else { return nil }
+        guard result.exitCode == 0 else { throw PackError.gitFailed(result.stderr) }
         let remoteFull = result.stdout.split(whereSeparator: { $0 == "\t" || $0 == " " }).first.map(String.init) ?? ""
-        guard !remoteFull.isEmpty else { return nil }
-        let remoteShort = String(remoteFull.prefix(rec.commitSHA.count))
-        guard remoteShort != rec.commitSHA else { return nil }
-        return PackUpdateAvailable(key: key, currentSHA: rec.commitSHA, remoteSHA: remoteShort)
+        guard Self.validRevision(remoteFull) else { throw PackError.notAGitRepo }
+        guard !Self.matchesRevision(rec.commitSHA, remoteFull) else { return nil }
+        return PackUpdateAvailable(key: key, currentSHA: rec.commitSHA, remoteSHA: remoteFull)
     }
 
     // MARK: - Update: clone the new revision and diff against local
 
-    func cloneUpdate(_ key: String) async throws -> PackUpdate {
+    func cloneUpdate(_ key: String, available: PackUpdateAvailable? = nil) async throws -> PackUpdate {
         guard let rec = Self.loadInstalled().first(where: { $0.key == key }) else {
             throw PackError.packNotInstalled(key)
         }
@@ -429,22 +435,40 @@ final class PackManager: ObservableObject {
                               diffsByFile: Self.diffScripts(localDir: Self.packDir(key), localManifest: rec.manifest,
                                                            newDir: snapshot.directory, newManifest: snapshot.manifest), newScripts: snapshot.scripts)
         }
+        if let available, available.key != key { throw PackError.packNotInstalled(key) }
+        let entry: CatalogPack?
+        let revision: String?
+        if let available {
+            entry = available.catalogEntry
+            revision = available.remoteSHA
+            if let catalogID = rec.catalogID, entry?.id != catalogID {
+                throw PackCatalog.Failure("The selected update does not match this Bazaar package.")
+            }
+        } else if rec.catalogID != nil || PackCatalog.canonicalRepository(rec.repoURL) != nil {
+            let catalog = try await PackDiscovery.catalog()
+            entry = try catalog.entry(repository: rec.repoURL, catalogID: rec.catalogID)
+            revision = entry?.revision
+        } else {
+            entry = nil
+            revision = nil
+        }
+        if let entry {
+            try entry.validate()
+            guard PackCatalog.canonicalRepository(rec.repoURL) == entry.repository.lowercased(), revision == entry.revision else {
+                throw PackCatalog.Failure("The selected update source or revision does not match Bazaar.")
+            }
+        }
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("anywhere-pack-update-\(UUID().uuidString)", isDirectory: true)
-        let clone = await Self.git(["clone", "--depth", "1", rec.repoURL, tempDir.path], cwd: nil)
-        guard clone.exitCode == 0 else {
-            try? FileManager.default.removeItem(at: tempDir)
-            throw PackError.gitFailed(clone.stderr.isEmpty ? clone.stdout : clone.stderr)
-        }
-
         do {
+            let newSHA = try await Self.checkout(repoURL: rec.repoURL, revision: revision, into: tempDir)
             let (newManifest, newScripts) = try Self.readManifestAndScripts(in: tempDir)
-            let newSHA = await Self.shortHEAD(in: tempDir)
+            try entry?.validate(manifest: newManifest)
             let diffs = Self.diffScripts(localDir: Self.packDir(key), localManifest: rec.manifest,
                                          newDir: tempDir, newManifest: newManifest)
             return PackUpdate(key: key, tempDir: tempDir, newManifest: newManifest, newSHA: newSHA,
                               newRepoURL: rec.repoURL, newRepo: rec.repo,
-                              diffsByFile: diffs, newScripts: newScripts)
+                              diffsByFile: diffs, newScripts: newScripts, catalogID: entry?.id)
         } catch {
             try? FileManager.default.removeItem(at: tempDir)
             throw error
@@ -454,6 +478,7 @@ final class PackManager: ObservableObject {
     // MARK: - Update: apply (preserve enabled state by PackAction.id)
 
     func applyUpdate(_ key: String, _ update: PackUpdate) throws {
+        guard key == update.key else { throw PackError.packNotInstalled(key) }
         guard PluginLauncherController.shared.endSession(packKey: key, confirm: true) else {
             throw PluginError(.cancelled, String(localized: "plugins.updateCancelled"))
         }
@@ -521,7 +546,8 @@ final class PackManager: ObservableObject {
         var records = Self.loadInstalled().filter { $0.key != key }
         records.append(InstalledRecord(key: key, repoURL: update.newRepoURL, repo: update.newRepo,
                                        commitSHA: update.newSHA, manifest: update.newManifest,
-                                       isLocal: packs.first { $0.key == key }?.isLocal == true ? true : nil))
+                                       isLocal: packs.first { $0.key == key }?.isLocal == true ? true : nil,
+                                       catalogID: update.catalogID))
         try Self.saveInstalled(records)
         } catch {
             try fm.removeItem(at: dest); try fm.moveItem(at: backup, to: dest); throw error
@@ -625,10 +651,41 @@ final class PackManager: ObservableObject {
         }
     }
 
-    private static func shortHEAD(in dir: URL) async -> String {
-        let r = await git(["rev-parse", "--short", "HEAD"], cwd: dir)
-        let sha = r.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        return sha.isEmpty ? "unknown" : sha
+    static func validRevision(_ revision: String) -> Bool {
+        revision.range(of: "^[0-9a-f]{40}$", options: .regularExpression) != nil
+    }
+
+    static func matchesRevision(_ installed: String, _ revision: String) -> Bool {
+        // Older installs persisted a short SHA. Keep their data/key and compare its prefix.
+        (7...40).contains(installed.count) && validRevision(revision) && revision.hasPrefix(installed)
+    }
+
+    /// Fetch an exact commit without checking out default-branch files first.
+    static func checkout(repoURL: String, revision: String?, into directory: URL) async throws -> String {
+        if let revision, !validRevision(revision) { throw PackCatalog.Failure("Invalid package revision.") }
+        func run(_ args: [String], _ cwd: URL?) async throws -> String {
+            let result = await git(args, cwd: cwd)
+            guard result.exitCode == 0 else { throw PackError.gitFailed(result.stderr.isEmpty ? result.stdout : result.stderr) }
+            return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        do {
+            if let revision {
+                _ = try await run(["init", directory.path], nil)
+                _ = try await run(["remote", "add", "origin", repoURL], directory)
+                _ = try await run(["fetch", "--depth", "1", "origin", revision], directory)
+                _ = try await run(["-c", "core.hooksPath=/dev/null", "checkout", "--detach", revision], directory)
+            } else {
+                _ = try await run(["-c", "core.hooksPath=/dev/null", "clone", "--depth", "1", "--", repoURL, directory.path], nil)
+            }
+            let actual = try await run(["rev-parse", "HEAD"], directory)
+            guard validRevision(actual), revision == nil || actual == revision else {
+                throw PackCatalog.Failure("Downloaded package revision does not match the selected revision.")
+            }
+            return actual
+        } catch {
+            try? FileManager.default.removeItem(at: directory)
+            throw error
+        }
     }
 
     // MARK: - git helper (off the main actor; blocking ShellRunner)
@@ -704,6 +761,7 @@ final class PackManager: ObservableObject {
         let manifest: PackManifest
         // Optional for compatibility with existing Git pack records.
         var isLocal: Bool? = nil
+        var catalogID: String? = nil
     }
 
     private static func loadInstalled() -> [InstalledRecord] {
