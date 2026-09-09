@@ -228,27 +228,23 @@ struct PluginLauncherView: View {
     @ObservedObject var manager: PackManager
     @State private var entries: [PluginSearchEntry] = []
     @State private var recent: [UUID] = []
-    @State private var apps: [ApplicationSearchEntry] = []
-    @State private var loadingApps = false
 
     private enum Result: Identifiable {
-        case plugin(PluginSearchMatch), application(ApplicationSearchEntry)
+        case plugin(PluginSearchMatch)
         var id: String {
             switch self {
             case .plugin(let match): return match.entry.id.uuidString
-            case .application(let app): return app.id
             }
         }
         var title: String {
             switch self {
             case .plugin(let match): return match.entry.title
-            case .application(let app): return app.name
             }
         }
     }
     private var results: [Result] {
         let plugins = PluginSearch.matches(query: controller.query, entries: entries, recent: recent, keywordsOnly: true)
-        return plugins.map(Result.plugin) + ApplicationSearch.matches(query: controller.query, apps: apps).map(Result.application)
+        return plugins.map(Result.plugin)
     }
     private var hasQuery: Bool { !controller.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
@@ -265,14 +261,6 @@ struct PluginLauncherView: View {
             controller.open(entry, invocation: PluginInvocation(actionID: entry.id, source: .launcher,
                                                                query: controller.query, argument: match.argument,
                                                                finderPath: controller.finderPath))
-        case .application(let app):
-            controller.hide()
-            NSWorkspace.shared.openApplication(at: app.url, configuration: .init()) { _, error in
-                Task { @MainActor in
-                    if let error { controller.error = error.localizedDescription; controller.show() }
-                    else { controller.query = "" }
-                }
-            }
         }
     }
     private func move(_ delta: Int) {
@@ -300,7 +288,7 @@ struct PluginLauncherView: View {
                 if hasQuery {
                     Divider().padding(.horizontal, 20)
                     if results.isEmpty {
-                        Text(loadingApps ? String(localized: "launcher.loadingApps") : String(localized: "launcher.noApps"))
+                        Text(String(localized: "plugins.noMatches"))
                             .foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         ScrollViewReader { proxy in
@@ -346,12 +334,6 @@ struct PluginLauncherView: View {
         .task(id: controller.focusRequest) {
             reloadEntries()
             guard controller.session == nil else { return }
-            loadingApps = true
-            let discovered = await Task.detached(priority: .utility) {
-                ApplicationSearch.discover(in: ApplicationSearch.directories)
-            }.value
-            guard !Task.isCancelled else { return }
-            apps = discovered; loadingApps = false; updateResults()
         }
     }
 
@@ -363,8 +345,6 @@ struct PluginLauncherView: View {
                     if let action = AppState.shared.config.actions.first(where: { $0.id == match.entry.id }) {
                         ActionIconView(icon: action.icon, size: 38)
                     }
-                case .application(let app):
-                    Image(nsImage: NSWorkspace.shared.icon(forFile: app.url.path)).resizable().frame(width: 38, height: 38)
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(result.title).font(.system(size: 18, weight: .medium)).lineLimit(1)
