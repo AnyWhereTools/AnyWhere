@@ -85,7 +85,7 @@ regex filters requires at least **3**; existing version 1–3 packs remain suppo
 | Action `ui` | `{ "entry": "ui/index.html", "height": 420 }`; local HTML, optional height |
 | Action `launcher` | `{ "keywords": ["text"] }`; registers search, keywords may be empty |
 | Action `contextMenu` | Defaults to `true`; `false` excludes the action from Finder |
-| Action `capabilities` | Page capability array: `clipboard.write`, `task.run` |
+| Action `capabilities` | Page capabilities: `clipboard.write`, `task.run`; newer [host services](plugin-services.md) add `documents`, `launcher.entries`, `notifications` |
 | Action `script` | Optional with UI; required by `task.run` |
 
 Search and context-menu entries are independently enabled and start disabled. If both UI and

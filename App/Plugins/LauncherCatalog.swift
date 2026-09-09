@@ -11,6 +11,7 @@ struct LauncherWorkflowEntry: Identifiable {
 struct LauncherEntry: Identifiable {
     enum Target {
         case plugin(PluginLauncherEntry), action(MenuAction), workflow(LauncherWorkflowEntry)
+        case website(PluginLauncherEntry, PluginLink)
     }
     let search: PluginSearchEntry
     let subtitle: String
@@ -21,6 +22,7 @@ struct LauncherEntry: Identifiable {
         case .plugin(let entry): return String(localized: entry.definition.ui == nil ? "panel.kind.action" : "panel.kind.tool")
         case .action: return String(localized: "panel.kind.action")
         case .workflow: return String(localized: "panel.kind.workflow")
+        case .website: return "网页"
         }
     }
     var icon: String {
@@ -28,6 +30,7 @@ struct LauncherEntry: Identifiable {
         case .plugin(let entry): return entry.definition.icon
         case .action: return "bolt"
         case .workflow: return "arrow.triangle.branch"
+        case .website: return "globe"
         }
     }
 }

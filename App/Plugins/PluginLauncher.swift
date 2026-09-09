@@ -229,7 +229,10 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
         let enabled = context.source == .finder ? current.action.isEnabled && current.definition.contextMenu
             : (try? manager.preferences.isEnabled(actionID: entry.id)) == true
         guard enabled else { return }
-        if session?.entry.id == entry.id { show(); return }
+        if let detached = ToolWorkspaceController.shared.windows[entry.id] {
+            detached.activate(invocation: context); return
+        }
+        if session?.entry.id == entry.id { session?.activate(context); show(); return }
         if (session != nil || workflowRunning) && !confirmSwitch() { return }
         back()
         guard panelState == .search else { return }
@@ -410,6 +413,14 @@ struct PluginLauncherView: View {
             case .action(let action): controller.runUserAction(action.id, query: controller.query, argument: match.argument)
             case .plugin(let entry): controller.open(entry, invocation: invocation)
             case .workflow(let entry): controller.openWorkflow(entry, invocation: invocation)
+            case .website(let entry, let link):
+                do {
+                    guard manager.launcherEntries().contains(where: { $0.id == entry.id && $0.definition.capabilities.contains(.launcherEntries) }),
+                          let current = try PluginServices.store(entry).links().first(where: { $0.id == link.id }) else { return }
+                    guard NSWorkspace.shared.open(try current.destination(argument: match.argument)) else { throw PluginError(.failed, "Could not open browser.") }
+                    try manager.preferences.recordUse(actionID: match.entry.id)
+                    controller.hide()
+                } catch { controller.error = error.localizedDescription }
             }
         case .application(let app):
             controller.hide()
@@ -542,6 +553,7 @@ struct PluginLauncherView: View {
         .onChange(of: controller.query) { _ in updateResults(resetSelection: true) }
         .onChange(of: controller.error) { _ in controller.updateLayout(resultCount: results.count) }
         .onReceive(manager.$packs) { _ in DispatchQueue.main.async { reloadEntries() } }
+        .onReceive(NotificationCenter.default.publisher(for: PluginServices.changed)) { _ in reloadEntries() }
         .onReceive(AppState.shared.$config) { _ in DispatchQueue.main.async { reloadEntries() } }
         .task(id: controller.focusRequest) {
             reloadEntries()

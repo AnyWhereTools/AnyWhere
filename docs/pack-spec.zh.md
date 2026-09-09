@@ -73,7 +73,7 @@ your-pack/
 | 动作 `ui` | `{ "entry": "ui/index.html", "height": 420 }`；包内 HTML，高度可省略 |
 | 动作 `launcher` | `{ "keywords": ["text"] }`；声明搜索入口，关键词可为空 |
 | 动作 `contextMenu` | 默认 `true`；`false` 不出现在 Finder 右键中 |
-| 动作 `capabilities` | 页面能力数组，支持 `clipboard.write`、`task.run` |
+| 动作 `capabilities` | 页面能力数组，支持 `clipboard.write`、`task.run`；新版[宿主服务](plugin-services.zh.md)增加 `documents`、`launcher.entries`、`notifications` |
 | 动作 `script` | 有 UI 时可省略；`task.run` 必须同时声明脚本 |
 
 搜索与右键入口分别启停，导入后都禁用。UI 与脚本同时存在时只加载页面，不隐式执行脚本。页面通过 `window.anywhere` 获取上下文、普通配置、插件独立存储、剪贴板和可取消任务。密码继续由原生配置表单保存及注入后端。

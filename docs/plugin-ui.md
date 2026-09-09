@@ -126,3 +126,5 @@ Import [Clipboard JSON workflows](../examples/tool-panel-demo/README.md) for rea
 Enable developer mode in General settings to inspect newly created pages with Web Inspector and review/reload local source folders. Reload Page recreates a session from the installed copy; it does not copy source changes. JavaScript errors and task failures appear in the host header; pages subscribe to task output.
 
 Handle Escape with `event.preventDefault()` to dismiss page overlays; unhandled Escape returns to search. Pages should adapt to window sizes and provide accessible labels and keyboard interaction. Arbitrary native windows and Node APIs are not provided.
+
+See [host services](plugin-services.md) for large documents, dynamic launcher entries and scheduled notifications, requiring `documents`, `launcher.entries` and `notifications` respectively. Ordinary bridge/storage limits are unchanged. `onEnter` also fires when an existing page is activated again.

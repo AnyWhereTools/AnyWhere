@@ -133,6 +133,7 @@ final class PackManager: ObservableObject {
         }
         .sorted { $0.manifest.name.localizedCaseInsensitiveCompare($1.manifest.name) == .orderedAscending }
         PluginLauncherController.shared.validateSession(using: self)
+        PluginServices.shared.reconcile(launcherEntries())
     }
 
     // MARK: - Import: step 1 — clone (NEVER executes scripts)
@@ -282,6 +283,13 @@ final class PackManager: ObservableObject {
             return LauncherEntry(search: search, subtitle: pack?.manifest.description ?? pack?.manifest.name ?? "",
                                  target: .plugin(plugin))
         }
+        for plugin in launcherEntries() where plugin.definition.capabilities.contains(.launcherEntries) {
+            for link in try PluginServices.store(plugin).links() {
+                let id = Self.actionUUID(packKey: "link:" + plugin.id.uuidString, packActionID: link.id)
+                entries.append(LauncherEntry(search: PluginSearchEntry(id: id, title: link.title, keywords: link.keywords),
+                                             subtitle: link.url, target: .website(plugin, link)))
+            }
+        }
         entries += appState().config.actions.filter { $0.shortcutOnly == true && $0.isEnabled }.compactMap { action in
             guard let search = shortcuts.first(where: { $0.id == action.id }) else { return nil }
             return LauncherEntry(search: search, subtitle: "", target: .action(action))
@@ -342,7 +350,7 @@ final class PackManager: ObservableObject {
         guard config.actions[idx].isEnabled != enabled else { return }
         if !enabled, PluginLauncherController.shared.session?.entry.id == actionID,
            PluginLauncherController.shared.session?.invocation.source == .finder {
-            _ = PluginLauncherController.shared.endSession(packKey: config.actions[idx].packID!)
+            guard PluginLauncherController.shared.endSession(packKey: config.actions[idx].packID!) else { return }
         }
         config.actions[idx].isEnabled = enabled
         appState().update(config)
@@ -350,11 +358,14 @@ final class PackManager: ObservableObject {
     }
 
     func setLauncherEnabled(_ enabled: Bool, actionID: UUID) throws {
-        try preferences.setEnabled(enabled, actionID: actionID)
-        if !enabled, let entry = launcherEntry(actionID: actionID), PluginLauncherController.shared.session?.entry.id == actionID,
-           PluginLauncherController.shared.session?.invocation.source == .launcher {
-            _ = PluginLauncherController.shared.endSession(packKey: entry.action.packID!)
+        if !enabled, let detached = ToolWorkspaceController.shared.windows[actionID], !detached.endSession() {
+            throw PluginError(.busy, "Keep the tool enabled until unsaved edits are handled.")
         }
+        if !enabled, let entry = launcherEntry(actionID: actionID), PluginLauncherController.shared.session?.entry.id == actionID,
+           PluginLauncherController.shared.session?.invocation.source == .launcher, PluginLauncherController.shared.workflow == nil {
+            guard PluginLauncherController.shared.endSession(packKey: entry.action.packID!) else { throw PluginError(.busy, "Keep the tool enabled until unsaved edits are handled.") }
+        }
+        try preferences.setEnabled(enabled, actionID: actionID)
         reload()
     }
 
@@ -369,6 +380,8 @@ final class PackManager: ObservableObject {
         if clearData {
             for id in try preferences.knownActions(packKey: key) { try PackConfiguration.store().remove(actionID: id) }
             try PluginDataStore(directory: Self.dataDirectory(key)).removeAll()
+            let services = Self.dataDirectory(key).appendingPathComponent("HostServices")
+            if FileManager.default.fileExists(atPath: services.path) { try FileManager.default.removeItem(at: services) }
         }
         // Keep known IDs when retaining data, so a later uninstall can clear removed actions too.
         if clearData { try preferences.removePack(packKey: key) }

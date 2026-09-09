@@ -93,6 +93,10 @@ final class ToolWindowController: NSWindowController, NSWindowDelegate, NSToolba
         session = PluginSession(entry: entry, invocation: invocation)
         installContent()
     }
+    func activate(invocation: PluginInvocation) {
+        session.activate(invocation)
+        NSApp.activate(ignoringOtherApps: true); showWindow(nil); window?.makeKeyAndOrderFront(nil)
+    }
     @discardableResult func endSession() -> Bool {
         guard session.close(waitForTask: true) else { return false }
         window?.contentView = nil

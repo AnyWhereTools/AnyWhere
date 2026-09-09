@@ -17,6 +17,7 @@ public struct PackLauncher: Codable, Equatable, Sendable {
 
 public enum PluginCapability: String, Codable, Sendable {
     case runTask = "task.run", writeClipboard = "clipboard.write"
+    case documents = "documents", launcherEntries = "launcher.entries", notifications = "notifications"
 }
 
 public enum PluginActionIdentity {

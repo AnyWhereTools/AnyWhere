@@ -30,6 +30,37 @@ interface PluginTask {
   onOutput(callback: (event: {id: string; stream: 'stdout' | 'stderr'; text: string}) => void): () => void;
 }
 interface AnyWhereSDK {
+  /** `documents` capability. UTF-8, <=50 MiB; native picker grants file access.
+   * Transfers use bounded chunks without increasing the ordinary 1 MiB bridge limit.
+   * Drafts are isolated per action. markDirty/saveDraft version prevents stale saves clearing newer edits.
+   */
+  documents: {
+    open(): Promise<{name: string; text: string} | null>;
+    draft(): Promise<{name: string; text: string} | null>;
+    markDirty(version: number): Promise<void>;
+    saveDraft(text: string, version: number): Promise<boolean>;
+    saveAs(text: string, name?: string): Promise<boolean>;
+    /** Also requires clipboard.write; supports documents larger than an ordinary bridge message. */
+    copyText(text: string): Promise<boolean>;
+  };
+  /** `launcher.entries` capability. Entries persist beyond the page; disabled tools are omitted. */
+  launcher: {
+    setEntries(entries: {id: string; title: string; keywords: string[]; url: string}[]): Promise<void>;
+    /** Opens an existing registered entry; substitutes percent-encoded argument for {query}. */
+    open(id: string, argument?: string): Promise<void>;
+  };
+  /** `notifications` capability. Requires the owning tool's launcher switch to stay enabled. */
+  notifications: {
+    status(): Promise<'authorized' | 'denied' | 'notDetermined'>;
+    /** Replaces this action's desired reminders (<=50); [] cancels them.
+     * date is Unix seconds. daily/weekly use the date's local time/weekday, starting at next match.
+     * Persist application data first. Check authorization/errors; success is not a promise of visible delivery.
+     * Notification click opens this action with invocation.argument = reminder.id.
+     */
+    replace(reminders: {id: string; title: string; body: string; date: number; recurrence: 'none' | 'daily' | 'weekly'}[]):
+      Promise<{authorization: 'authorized' | 'denied' | 'notDetermined'; errors: string[]}>;
+  };
+  /** Fires on initial entry and when an existing window is activated (e.g. notification click). */
   onEnter(callback: (context: PluginInvocation) => void): () => void;
   getInvocation(): Promise<PluginInvocation>;
   workflow: {

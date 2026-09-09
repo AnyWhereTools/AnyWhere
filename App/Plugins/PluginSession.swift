@@ -5,9 +5,9 @@ import UniformTypeIdentifiers
 import AnyWhereCore
 
 @MainActor
-final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWithReply, WKURLSchemeHandler, WKNavigationDelegate {
+final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWithReply, WKURLSchemeHandler, WKNavigationDelegate, WKUIDelegate {
     let entry: PluginLauncherEntry
-    let invocation: PluginInvocation
+    private(set) var invocation: PluginInvocation
     private let pagePath: String
     let id = UUID().uuidString.lowercased()
     @Published var error: String?
@@ -22,6 +22,7 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
     private var waiter: ((Any?, String?) -> Void)?
     private var navigationStarted = false
     private lazy var dataStore = PluginDataStore(directory: PackManager.dataDirectory(entry.action.packID!))
+    private lazy var documents = PluginDocuments(directory: PluginServices.directory(entry))
     private(set) var webView: WKWebView!
 
     init(entry: PluginLauncherEntry, invocation: PluginInvocation, workflowInput: JSONValue? = nil,
@@ -37,19 +38,29 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
         configuration.userContentController.addUserScript(WKUserScript(source: Self.sdk, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self
+        webView.uiDelegate = self
         if #available(macOS 13.3, *) { webView.isInspectable = UserDefaults.standard.bool(forKey: "pluginDeveloperMode") }
         var url = URLComponents()
         url.scheme = "anywhere-plugin"; url.host = id; url.path = pagePath
         webView.load(URLRequest(url: url.url!))
     }
 
-    @discardableResult func close(waitForTask: Bool = false) -> Bool {
+    @discardableResult func close(waitForTask: Bool = false, discardUnsaved: Bool = false) -> Bool {
         guard !closed else { return task?.waitUntilFinished() ?? true }
+        if documents.dirty && !discardUnsaved {
+            let alert = NSAlert()
+            alert.messageText = "草稿尚未保存"
+            alert.informativeText = "请等待自动保存完成。现在关闭将丢弃尚未保存的编辑。"
+            alert.addButton(withTitle: "继续编辑"); alert.addButton(withTitle: "丢弃并关闭")
+            guard alert.runModal() == .alertSecondButtonReturn else { return false }
+        }
+        documents.close()
         closed = true; task?.cancel()
         waiter?(nil, "sessionClosed: Session ended."); waiter = nil
         webView.stopLoading()
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "anywhere", contentWorld: .page)
         webView.navigationDelegate = nil
+        webView.uiDelegate = nil
         webView = nil
         return !waitForTask || (task?.waitUntilFinished() ?? true)
     }
@@ -57,11 +68,32 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
     private func encoded<T: Encodable>(_ value: T) throws -> Any {
         try JSONSerialization.jsonObject(with: JSONEncoder().encode(value), options: [.fragmentsAllowed])
     }
+    func activate(_ invocation: PluginInvocation) {
+        guard !closed else { return }
+        self.invocation = invocation
+        guard let context = try? encoded(invocation) else { return }
+        webView.callAsyncJavaScript("window.__anywhereEnter(context)", arguments: ["context": context], in: nil, in: .page) { _ in }
+    }
     private func require(_ capability: PluginCapability) throws {
         guard entry.definition.capabilities.contains(capability) else { throw PluginError(.denied, "Capability not declared: \(capability.rawValue)") }
     }
     private func value(_ raw: Any) throws -> JSONValue {
         try JSONDecoder().decode(JSONValue.self, from: JSONSerialization.data(withJSONObject: raw, options: [.fragmentsAllowed]))
+    }
+    private func decode<T: Decodable>(_ raw: Any, as type: T.Type) throws -> T {
+        try JSONDecoder().decode(type, from: JSONSerialization.data(withJSONObject: raw, options: [.fragmentsAllowed]))
+    }
+    private func replyAsync(_ reply: @escaping (Any?, String?) -> Void, operation: @escaping @MainActor () async throws -> Any) {
+        Task {
+            do {
+                let result = try await operation()
+                guard !closed else { throw PluginError(.sessionClosed, "Session ended.") }
+                reply(["result": result], nil)
+            } catch {
+                let failure = error as? PluginError ?? PluginError(.failed, error.localizedDescription)
+                reply(["error": ["code": failure.code.rawValue, "message": failure.message]], nil)
+            }
+        }
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage,
@@ -84,6 +116,37 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
             }
             var response: Any = NSNull()
             switch method {
+            case "documents.dirty", "documents.open", "documents.read", "documents.begin", "documents.append", "documents.finish", "documents.cancel":
+                try require(.documents)
+                let token = params["token"] as? String ?? ""
+                switch method {
+                case "documents.dirty": documents.markDirty(params["version"] as? Int ?? 0)
+                case "documents.open":
+                    replyAsync(replyHandler) { try await self.documents.open(draftOnly: params["draft"] as? Bool == true) }; return
+                case "documents.read": response = try documents.read(token)
+                case "documents.begin": response = try documents.beginWrite()
+                case "documents.append": try documents.append(token, base64: params["data"] as? String ?? "")
+                case "documents.finish":
+                    if params["clipboard"] as? Bool == true { try require(.writeClipboard) }
+                    replyAsync(replyHandler) { try await self.documents.finish(token, draftOnly: params["draft"] as? Bool == true,
+                        version: params["version"] as? Int ?? 0, name: params["name"] as? String ?? "document.json", clipboard: params["clipboard"] as? Bool == true) }; return
+                default: documents.cancel(token)
+                }
+            case "launcher.setEntries":
+                try require(.launcherEntries)
+                try PluginServices.store(entry).setLinks(decode(params["entries"] ?? [], as: [PluginLink].self))
+                NotificationCenter.default.post(name: PluginServices.changed, object: nil)
+            case "launcher.open":
+                try require(.launcherEntries)
+                guard let link = try PluginServices.store(entry).links().first(where: { $0.id == params["id"] as? String }) else { throw PluginError(.invalidArguments, "Website no longer exists.") }
+                guard NSWorkspace.shared.open(try link.destination(argument: params["argument"] as? String ?? "")) else { throw PluginError(.failed, "Could not open browser.") }
+            case "notifications.status":
+                try require(.notifications)
+                replyAsync(replyHandler) { await PluginServices.shared.status() }; return
+            case "notifications.replace":
+                try require(.notifications)
+                let reminders = try decode(params["reminders"] ?? [], as: [PluginReminder].self)
+                replyAsync(replyHandler) { try await PluginServices.shared.replace(reminders, entry: self.entry) }; return
             case "host.getInvocation": response = try encoded(invocation)
             case "workflow.context":
                 response = ["active": workflowInput != nil, "input": try encoded(workflowInput ?? .null)]
@@ -179,7 +242,8 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
             guard !closed, let url = urlSchemeTask.request.url, url.host == id else { throw PluginError(.denied, "Invalid plugin resource.") }
             let file = try PluginResourceResolver.resolve(root: entry.directory, relativePath: String(url.path.dropFirst()))
             let mime = UTType(filenameExtension: file.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
-            let csp = "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+            let workers = entry.definition.capabilities.contains(.documents) ? "blob:" : "'none'"
+            let csp = "default-src 'none'; script-src 'self' 'unsafe-inline'; worker-src \(workers); style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
             var data = try Data(contentsOf: file)
             if mime == "text/html" {
                 data = Data(("<meta http-equiv=\"Content-Security-Policy\" content=\"\(csp)\">").utf8) + data
@@ -202,6 +266,22 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
         }
     }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { self.error = error.localizedDescription }
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo,
+                 completionHandler: @escaping (Bool) -> Void) {
+        guard !closed, frame.isMainFrame else { completionHandler(false); return }
+        let alert = NSAlert(); alert.messageText = entry.definition.title; alert.informativeText = String(message.prefix(2000))
+        alert.addButton(withTitle: "取消"); alert.addButton(withTitle: "确认")
+        completionHandler(alert.runModal() == .alertSecondButtonReturn)
+    }
+    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo,
+                 completionHandler: @escaping (String?) -> Void) {
+        guard !closed, frame.isMainFrame else { completionHandler(nil); return }
+        let alert = NSAlert(); alert.messageText = entry.definition.title; alert.informativeText = String(prompt.prefix(2000))
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24)); field.stringValue = defaultText ?? ""
+        alert.accessoryView = field; alert.addButton(withTitle: "打开"); alert.addButton(withTitle: "取消")
+        alert.window.initialFirstResponder = field
+        completionHandler(alert.runModal() == .alertFirstButtonReturn ? field.stringValue : nil)
+    }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { self.error = error.localizedDescription }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { error = String(localized: "plugins.pageFailed"); task?.cancel() }
 
@@ -213,7 +293,36 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
         if (reply.error) throw Object.assign(new Error(reply.error.message), {code: reply.error.code});
         return reply.result;
       };
-      const context = request('host.getInvocation');
+      let context = request('host.getInvocation');
+      const enterListeners = new Set();
+      window.__anywhereEnter = value => { context = Promise.resolve(value); enterListeners.forEach(fn => fn(value)); };
+      const documentRead = async draft => {
+        const info = await request('documents.open', {draft});
+        if (!info) return null;
+        const decoder = new TextDecoder('utf-8', {fatal: true}), parts = [];
+        try {
+          while (true) {
+            const chunk = await request('documents.read', {token: info.id});
+            if (chunk.done) break;
+            parts.push(decoder.decode(Uint8Array.from(atob(chunk.data), c => c.charCodeAt(0)), {stream: true}));
+          }
+          parts.push(decoder.decode());
+          return {name: info.name, text: parts.join('')};
+        } finally { await request('documents.cancel', {token: info.id}); }
+      };
+      const documentWrite = async (text, draft, version = 0, name = 'document.json', clipboard = false) => {
+        const bytes = new TextEncoder().encode(text);
+        if (bytes.length > 50 * 1024 * 1024) throw new Error('文件超过 50 MiB');
+        const token = await request('documents.begin');
+        try {
+          for (let i = 0; i < bytes.length; i += 196608) {
+            const chunk = bytes.subarray(i, i + 196608); let binary = '';
+            for (let j = 0; j < chunk.length; j += 8192) binary += String.fromCharCode(...chunk.subarray(j, j + 8192));
+            await request('documents.append', {token, data: btoa(binary)});
+          }
+          return await request('documents.finish', {token, draft, version, name, clipboard});
+        } finally { await request('documents.cancel', {token}); }
+      };
       const channels = new Map();
       window.__anywhereOutput = event => {
         let channel = channels.get(event.id);
@@ -222,8 +331,15 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
         else channel.pending.push(event);
       };
       window.anywhere = Object.freeze({
-        onEnter: callback => { let active = true; context.then(value => { if (active) callback(value); }); return () => { active = false; }; },
+        onEnter: callback => { let active = true; enterListeners.add(callback); context.then(value => { if (active) callback(value); }); return () => { active = false; enterListeners.delete(callback); }; },
         getInvocation: () => context,
+        documents: {open: () => documentRead(false), draft: () => documentRead(true),
+          markDirty: version => request('documents.dirty', {version}),
+          saveDraft: (text, version) => documentWrite(text, true, version),
+          copyText: text => documentWrite(text, false, 0, 'document.json', true),
+          saveAs: (text, name) => documentWrite(text, false, 0, name)},
+        launcher: {setEntries: entries => request('launcher.setEntries', {entries}), open: (id, argument = '') => request('launcher.open', {id, argument})},
+        notifications: {status: () => request('notifications.status'), replace: reminders => request('notifications.replace', {reminders})},
         workflow: {context: () => request('workflow.context'), complete: output => request('workflow.complete', {output})},
         config: {get: () => request('config.get')},
         storage: {get: key => request('storage.get', {key}), set: (key, value) => request('storage.set', {key, value}), remove: key => request('storage.remove', {key})},

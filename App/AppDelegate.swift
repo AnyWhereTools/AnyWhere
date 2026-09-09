@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         Notifier.requestAuthorizationOnce()
+        PluginServices.shared.start()
         Task { @MainActor in AppState.shared.start() }
         Task { @MainActor in PluginLauncherController.shared.start() }
 

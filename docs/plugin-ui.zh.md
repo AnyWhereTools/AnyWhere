@@ -132,3 +132,5 @@ await anywhere.workflow.complete(output);
 通用设置开启「开发模式」后，新建页面可使用 Web Inspector；本地包增加「重新加载本地包…」，重新复制源文件并展示更新差异，确认后保留数据应用。页面重载按钮只加载已安装副本并建立新会话。JS 错误与任务失败显示在宿主顶部；任务输出由页面订阅。
 
 页面可以用 `event.preventDefault()` 消费 Escape，例如关闭自己的弹层；未处理的 Escape 返回搜索。页面应自行适应窗口尺寸、提供标签与键盘操作，不使用任意原生窗口或 Node API。
+
+大文件读写、动态搜索条目和定时通知见[宿主服务](plugin-services.zh.md)。这三项分别声明 `documents`、`launcher.entries`、`notifications`；原有普通消息与存储限额不变。`onEnter` 也会在已有页面被再次激活时回调。
