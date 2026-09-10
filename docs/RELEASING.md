@@ -56,7 +56,7 @@ build/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys -x sparkle_priv
 
 After setting `SUPublicEDKey`, re-run `make gen`.
 
-The update feed is `https://raw.githubusercontent.com/appdev/AnyWhere/main/appcast.xml`.
+The update feed is `https://raw.githubusercontent.com/AnyWhereTools/AnyWhere/main/appcast.xml`.
 Publish an AnyWhere release and its feed in this repository; the upstream project's feed
 is not used. Automatic checks are enabled by default and run silently on launch. Only
 available updates prompt the user; initialization errors are logged without showing an

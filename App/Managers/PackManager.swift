@@ -153,12 +153,12 @@ final class PackManager: ObservableObject {
         let repoURL = Self.normalizeRepoURL(urlOrShorthand)
         if let catalogEntry {
             try catalogEntry.validate()
-            guard PackCatalog.canonicalRepository(repoURL) == catalogEntry.repository.lowercased() else {
+            guard PackCatalog.repositoryIdentity(repoURL) == PackCatalog.repositoryIdentity(catalogEntry.repository) else {
                 throw PackCatalog.Failure("The selected Bazaar source does not match the import URL.")
             }
         }
         let repo = Self.repoDisplay(from: repoURL)
-        let key = Self.sanitizeKey(repo)
+        let key = Self.installKey(repoURL)
 
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("anywhere-pack-\(UUID().uuidString)", isDirectory: true)
@@ -501,20 +501,21 @@ final class PackManager: ObservableObject {
         }
         if let entry {
             try entry.validate()
-            guard PackCatalog.canonicalRepository(rec.repoURL) == entry.repository.lowercased(), revision == entry.revision else {
+            guard PackCatalog.repositoryIdentity(rec.repoURL) == PackCatalog.repositoryIdentity(entry.repository), revision == entry.revision else {
                 throw PackCatalog.Failure("The selected update source or revision does not match Bazaar.")
             }
         }
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("anywhere-pack-update-\(UUID().uuidString)", isDirectory: true)
         do {
-            let newSHA = try await Self.checkout(repoURL: rec.repoURL, revision: revision, into: tempDir)
+            let repoURL = entry?.repository ?? rec.repoURL
+            let newSHA = try await Self.checkout(repoURL: repoURL, revision: revision, into: tempDir)
             let (newManifest, newScripts) = try Self.readManifestAndScripts(in: tempDir)
             try entry?.validate(manifest: newManifest)
             let diffs = Self.diffScripts(localDir: Self.packDir(key), localManifest: rec.manifest,
                                          newDir: tempDir, newManifest: newManifest)
             return PackUpdate(key: key, tempDir: tempDir, newManifest: newManifest, newSHA: newSHA,
-                              newRepoURL: rec.repoURL, newRepo: rec.repo,
+                              newRepoURL: repoURL, newRepo: Self.repoDisplay(from: repoURL),
                               diffsByFile: diffs, newScripts: newScripts, catalogID: entry?.id)
         } catch {
             try? FileManager.default.removeItem(at: tempDir)
@@ -784,6 +785,12 @@ final class PackManager: ObservableObject {
         let comps = s.split(separator: "/").map(String.init)
         if comps.count >= 2 { return comps.suffix(2).joined(separator: "/") }
         return s
+    }
+
+    static func installKey(_ repoURL: String) -> String {
+        let identity = PackCatalog.repositoryIdentity(repoURL)
+        let source = identity != PackCatalog.canonicalRepository(repoURL) ? identity ?? repoURL : repoURL
+        return sanitizeKey(repoDisplay(from: source))
     }
 
     /// Filesystem-safe install key derived from owner/repo.

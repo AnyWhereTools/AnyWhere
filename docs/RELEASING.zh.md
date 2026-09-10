@@ -48,7 +48,7 @@ build/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys -x sparkle_priv
 
 修改 `SUPublicEDKey` 后重新运行 `make gen`。
 
-更新源为 `https://raw.githubusercontent.com/appdev/AnyWhere/main/appcast.xml`。发布产物和更新源属于当前仓库，不使用上游项目的更新源。应用默认在启动时静默检查更新，仅发现可用更新时提示；初始化错误只记录日志。更新器成功配置前，手动检查不可用。
+更新源为 `https://raw.githubusercontent.com/AnyWhereTools/AnyWhere/main/appcast.xml`。发布产物和更新源属于当前仓库，不使用上游项目的更新源。应用默认在启动时静默检查更新，仅发现可用更新时提示；初始化错误只记录日志。更新器成功配置前，手动检查不可用。
 
 ### 4. GitHub Actions Secrets
 

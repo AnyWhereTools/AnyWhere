@@ -55,6 +55,32 @@ final class BazaarTests: XCTestCase {
         XCTAssertThrowsError(try PackCatalog.decode(Data(repeating: 32, count: PackCatalog.byteLimit + 1)))
     }
 
+    func testOfficialOrganizationTransferPreservesIdentityAndUpdateState() async throws {
+        for (name, id) in [("anywhere-json-tools", "appdev.json-tools"), ("anywhere-quicklinks", "appdev.quicklinks"),
+                           ("anywhere-todo", "appdev.todo"), ("anywhere-tool-chain-demo", "appdev.tool-chain-demo")] {
+            let old = "https://github.com/appdev/" + name
+            let new = "https://github.com/AnyWhereTools/" + name
+            let moved = try catalog([entry(["id": id, "repository": new])])
+            XCTAssertEqual(try moved.entry(repository: old + ".git", catalogID: id)?.repository, new)
+            XCTAssertEqual(try moved.entry(repository: old, catalogID: nil)?.id, id)
+            XCTAssertEqual(PackManager.installKey(new), PackManager.sanitizeKey("appdev/" + name))
+            XCTAssertEqual(PackManager.installKey(new + ".git"), PackManager.installKey(old))
+            XCTAssertThrowsError(try moved.entry(repository: "https://github.com/other/" + name, catalogID: id))
+            let installed = InstalledPack(key: PackManager.installKey(old), manifest: PackManifest(schemaVersion: 4, name: "Tool", actions: []),
+                repoURL: old + ".git", repo: "appdev/" + name, commitSHA: String(repeating: "b", count: 40),
+                enabledCount: 1, totalCount: 1, catalogID: id)
+            let manager = PackManager(packs: [installed])
+            await manager.checkUpdates(catalog: moved)
+            XCTAssertNil(manager.updateCheckError)
+            XCTAssertEqual(manager.updates[installed.key]?.catalogEntry?.repository, new)
+            XCTAssertEqual(manager.packs.first?.key, installed.key)
+        }
+        XCTAssertEqual(PackManager.installKey("https://github.com/Other/Tool.git"), "Other-Tool")
+        XCTAssertThrowsError(try catalog([entry(["id": "appdev.other", "repository": "https://github.com/AnyWhereTools/other"])])
+            .entry(repository: "https://github.com/appdev/other", catalogID: "appdev.other"))
+        XCTAssertNil(PackCatalog.repositoryIdentity("https://github.com.evil.test/appdev/anywhere-todo"))
+    }
+
     func testLegacyRecordAndManifestCompatibility() throws {
         let action = PackAction(id: "tool", title: "Tool", icon: "bolt", script: "run.sh",
                                 launcher: PackLauncher(keywords: ["tool"]), contextMenu: false)

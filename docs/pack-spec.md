@@ -331,7 +331,7 @@ arrive disabled), and only applies after you confirm. Enabled state is preserved
 
 Any conforming public git repo is importable by URL — no registry, no submission. To make a
 pack discoverable in the app, submit a `registry/<id>.json` PR to
-[AnyWhere Bazaar](https://github.com/appdev/anywhere-bazaar). The marketplace reads its
+[AnyWhere Bazaar](https://github.com/AnyWhereTools/anywhere-bazaar). The marketplace reads its
 generated `catalog.json`; a GitHub topic no longer controls in-app discovery.
 
 Marketplace installs and updates fetch the catalog's full Git commit, verify checkout
@@ -352,6 +352,13 @@ the marketplace also refreshes the shared update state. Both collapsed installed
 and marketplace entries show an Update button when a new revision is available. Clicking
 downloads the selected latest revision into the existing diff review. Cancelling keeps
 the update available; applying clears it in both views while retaining plugin data.
+
+Official repositories now belong to `AnyWhereTools`. JSON tools, quicklinks, Todo and
+the tool-chain demo retain their `appdev.*` catalog IDs. Updated hosts recognize only
+these four verified repository transfers, preserve install keys, configuration and
+data directories, and download updates from the new locations. Other repository
+changes or arbitrary redirects are not trusted. Upgrade the host before using the
+transferred marketplace.
 
 **Security note for authors and users:** pack scripts run with the user's privileges. Keep
 scripts auditable and dependency-free; users should review every script before enabling it and

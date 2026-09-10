@@ -136,7 +136,7 @@ ANYWHERE_PATHS="/some/file.txt" /bin/zsh "$SUPP/Scripts/word-count.sh" /some/fil
 
 For something you want to **share**, author a git-repo extension pack instead (a cleaner
 `manifest.json` schema — no `_0` wrappers). See the
-[Extension Pack Specification](https://github.com/appdev/AnyWhere/blob/main/docs/pack-spec.md)
+[Extension Pack Specification](https://github.com/AnyWhereTools/AnyWhere/blob/main/docs/pack-spec.md)
 and the [example pack](../../examples/example-pack/). Tag the
 repo `anywhere-pack` so it shows up under "Browse community packs".
 

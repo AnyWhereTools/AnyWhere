@@ -73,24 +73,36 @@ struct PackCatalog: Decodable {
         return value
     }
 
+    /// These four repository transfers were verified by GitHub repository ID.
+    /// Keep their original identity so installed keys and plugin data survive the move.
+    static func repositoryIdentity(_ source: String) -> String? {
+        guard let canonical = canonicalRepository(source) else { return nil }
+        let prefix = "https://github.com/anywheretools/"
+        let transferred = ["anywhere-json-tools", "anywhere-quicklinks", "anywhere-todo", "anywhere-tool-chain-demo"]
+        if canonical.hasPrefix(prefix), transferred.contains(String(canonical.dropFirst(prefix.count))) {
+            return "https://github.com/appdev/" + canonical.dropFirst(prefix.count)
+        }
+        return canonical
+    }
+
     func entry(repository: String, catalogID: String?) throws -> CatalogPack? {
-        let source = Self.canonicalRepository(repository)
+        let source = Self.repositoryIdentity(repository)
         if let catalogID {
             guard let entry = packages.first(where: { $0.id == catalogID }) else {
                 throw Failure("This package is no longer listed in Bazaar. Its installed copy is unchanged.")
             }
-            guard source == entry.repository.lowercased() else {
+            guard source == Self.repositoryIdentity(entry.repository) else {
                 throw Failure("The Bazaar repository has changed. Import the new source separately after review.")
             }
             return entry
         }
-        return packages.first { $0.repository.lowercased() == source }
+        return packages.first { Self.repositoryIdentity($0.repository) == source }
     }
 }
 
 enum PackDiscovery {
-    static let website = URL(string: "https://github.com/appdev/anywhere-bazaar")!
-    static let endpoint = URL(string: "https://raw.githubusercontent.com/appdev/anywhere-bazaar/main/catalog.json")!
+    static let website = URL(string: "https://github.com/AnyWhereTools/anywhere-bazaar")!
+    static let endpoint = URL(string: "https://raw.githubusercontent.com/AnyWhereTools/anywhere-bazaar/main/catalog.json")!
 
     static func catalog() async throws -> PackCatalog {
         var request = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalCacheData)

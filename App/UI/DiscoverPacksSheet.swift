@@ -103,7 +103,7 @@ struct DiscoverPacksSheet: View {
     }
 
     private func row(_ pack: CatalogPack) -> some View {
-        let installed = packManager.packs.first { !$0.isLocal && PackCatalog.canonicalRepository($0.repoURL) == pack.repository.lowercased() }
+        let installed = packManager.packs.first { !$0.isLocal && PackCatalog.repositoryIdentity($0.repoURL) == PackCatalog.repositoryIdentity(pack.repository) }
         return HStack(spacing: 11) {
             AppIcon(pack.icon, size: 30, hue: .teal)
             VStack(alignment: .leading, spacing: 1) {
