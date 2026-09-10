@@ -165,6 +165,96 @@ final class OfficialPluginTests: XCTestCase {
         try await capture(session, name: "quicklinks")
     }
 
+    func testTodoProductUpgradeAndTaskLifecycle() async throws {
+        let session = try await load("anywhere-todo")
+        session.webView.window?.appearance = NSAppearance(named: .aqua)
+        let result = try await js(session, """
+          let step='initial';
+          const wait = async predicate => { const end=Date.now()+5000;while(Date.now()<end){if(await predicate())return;await new Promise(r=>setTimeout(r,25));}throw new Error('UI did not settle: '+step+' / '+document.getElementById('message').textContent); };
+          await wait(()=>!document.getElementById('new').disabled);
+          const legacy={schemaVersion:1,items:[{id:'legacy-task',title:'整理本周的灵感',note:'保留旧版任务和备注',priority:1,done:false,due:null,recurrence:'none'}]};
+          await anywhere.storage.set('todos',legacy); step='reload legacy';
+          document.getElementById('reload').click();
+          await wait(()=>!document.getElementById('new').disabled);
+          document.querySelector('[data-view="inbox"]').click();
+          if(!document.getElementById('todo-legacy-task'))throw new Error('Legacy task disappeared');
+          step='quick add'; document.getElementById('quick-title').value='准备明天的设计评审';document.getElementById('quick-form').requestSubmit();
+          await wait(async()=> (await anywhere.storage.get('todos')).schemaVersion===2 && !document.getElementById('new').disabled);
+          const migrated=await anywhere.storage.get('todos'),backup=await anywhere.storage.get('todos.v1Backup');
+          step='create list'; document.getElementById('add-list').click();document.getElementById('list-name').value='工作';document.getElementById('list-form').requestSubmit();
+          await wait(async()=> (await anywhere.storage.get('todos')).lists.length===1 && !document.getElementById('new').disabled);
+          document.getElementById('quick-title').value='完成插件交互稿';document.getElementById('quick-form').requestSubmit();
+          await wait(async()=> (await anywhere.storage.get('todos')).items.length===3 && !document.getElementById('new').disabled);
+          const added=(await anywhere.storage.get('todos')).items.find(t=>t.title==='完成插件交互稿');
+          document.querySelector('#todo-'+added.id+' .task-title').click();
+          document.getElementById('deadline').value=Todo.dayKey();document.getElementById('note').value='检查空状态、深色模式与键盘操作';
+          step='edit saved task'; document.getElementById('priority').value='2';document.getElementById('form').requestSubmit();
+          await wait(()=>document.getElementById('form').hidden && !document.getElementById('new').disabled);
+          document.querySelector('[data-view="today"]').click();
+          document.querySelector('#todo-'+added.id+' input').click();
+          await wait(()=>!document.getElementById('undo').hidden && !document.getElementById('new').disabled);
+          const completed=(await anywhere.storage.get('todos')).items.find(t=>t.id===added.id);
+          document.getElementById('undo').click();
+          await wait(async()=>!(await anywhere.storage.get('todos')).items.find(t=>t.id===added.id).done && !document.getElementById('new').disabled);
+          const state=await anywhere.storage.get('todos');
+          // Prepare only isolated test data for a representative native screenshot.
+          state.items.push({id:'review',title:'阅读两篇产品设计文章',note:'把值得尝试的想法留在备注里',priority:0,done:false,due:null,recurrence:'none',deadline:Todo.dayKey(),listId:null,createdAt:Date.now(),completedAt:null});
+          await anywhere.storage.set('todos',state);document.getElementById('reload').click();
+          await wait(()=>!document.getElementById('new').disabled);
+          return {migrated,backup,completed,state,overflow:document.documentElement.scrollWidth>window.innerWidth};
+          """) as? [String: Any]
+        XCTAssertEqual((result?["migrated"] as? [String: Any])?["schemaVersion"] as? Int, 2)
+        XCTAssertEqual((result?["backup"] as? [String: Any])?["schemaVersion"] as? Int, 1)
+        XCTAssertEqual((result?["completed"] as? [String: Any])?["done"] as? Bool, true)
+        XCTAssertEqual(result?["overflow"] as? Bool, false)
+        let state = result?["state"] as? [String: Any]
+        XCTAssertEqual((state?["items"] as? [[String: Any]])?.first?["id"] as? String, "legacy-task")
+        XCTAssertEqual((state?["items"] as? [[String: Any]])?.first?["note"] as? String, "保留旧版任务和备注")
+        XCTAssertEqual(try PluginServices.store(session.entry).reminders().count, 0)
+        try await capture(session, name: "todo-product")
+        let protection = try await js(session, """
+          const saved=await anywhere.storage.get('todos');
+          await anywhere.storage.set('todos',{schemaVersion:99,items:[]});document.getElementById('reload').click();
+          for(let i=0;i<100&&document.getElementById('load-error').hidden;i++)await new Promise(r=>setTimeout(r,25));
+          const protectedRead=document.getElementById('new').disabled && (await anywhere.storage.get('todos')).schemaVersion===99;
+          await anywhere.storage.set('todos',saved);document.getElementById('reload').click();
+          for(let i=0;i<100&&document.getElementById('new').disabled;i++)await new Promise(r=>setTimeout(r,25));
+          const task=saved.items.find(t=>t.title==='完成插件交互稿');document.querySelector('#todo-'+task.id+' .task-title').click();
+          const external={...saved,items:saved.items.map(t=>t.id===task.id?{...t,title:'另一个窗口的新标题'}:t)};
+          await anywhere.storage.set('todos',external);document.getElementById('title').value='过期的编辑';document.getElementById('form').requestSubmit();
+          for(let i=0;i<100&&!document.getElementById('message').textContent.includes('另一窗口');i++)await new Promise(r=>setTimeout(r,25));
+          return {protectedRead,conflictTitle:(await anywhere.storage.get('todos')).items.find(t=>t.id===task.id).title};
+          """) as? [String: Any]
+        XCTAssertEqual(protection?["protectedRead"] as? Bool, true)
+        XCTAssertEqual(protection?["conflictTitle"] as? String, "另一个窗口的新标题")
+        if let window = session.webView.window {
+            window.setContentSize(NSSize(width: 540, height: 760))
+            window.appearance = NSAppearance(named: .darkAqua)
+        }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        let overflow = try await js(session, "return document.documentElement.scrollWidth>window.innerWidth") as? Bool
+        XCTAssertEqual(overflow, false)
+        let modal = try await js(session, "return document.querySelector('main').inert && document.getElementById('editor').getAttribute('aria-modal')==='true'") as? Bool
+        XCTAssertEqual(modal, true)
+        try await capture(session, name: "todo-product-detail-dark")
+        let deletion = try await js(session, """
+          const wait=async predicate=>{const end=Date.now()+5000;while(Date.now()<end){if(await predicate())return;await new Promise(r=>setTimeout(r,25));}throw new Error('Delete/undo did not settle');};
+          window.confirm=()=>true; // Accept only this isolated test page's destructive-action prompts.
+          document.getElementById('cancel').click();document.getElementById('reload').click();await wait(()=>!document.getElementById('new').disabled);
+          const before=await anywhere.storage.get('todos'),task=before.items.find(t=>t.title==='另一个窗口的新标题');
+          document.querySelector('#todo-'+task.id+' .task-title').click();document.getElementById('delete').click();
+          await wait(()=>!document.getElementById('undo').hidden&&!document.getElementById('new').disabled);
+          const removed=!(await anywhere.storage.get('todos')).items.some(t=>t.id===task.id);
+          document.getElementById('undo').click();await wait(async()=> (await anywhere.storage.get('todos')).items.length===before.items.length&&!document.getElementById('new').disabled);
+          document.querySelector('[data-view="list:'+task.listId+'"]').click();document.getElementById('manage-list').click();document.getElementById('list-delete').click();
+          await wait(async()=> (await anywhere.storage.get('todos')).lists.length===0&&!document.getElementById('new').disabled);
+          const after=await anywhere.storage.get('todos');return {removed,count:after.items.length,expected:before.items.length,moved:after.items.find(t=>t.id===task.id).listId===null};
+          """) as? [String: Any]
+        XCTAssertEqual(deletion?["removed"] as? Bool, true)
+        XCTAssertEqual(deletion?["count"] as? Int, deletion?["expected"] as? Int)
+        XCTAssertEqual(deletion?["moved"] as? Bool, true)
+    }
+
     func testTodoActualFormPersistsAndSchedulesIndependently() async throws {
         let session = try await load("anywhere-todo")
         let result = try await js(session, """
