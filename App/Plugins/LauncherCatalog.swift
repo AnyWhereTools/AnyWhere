@@ -25,12 +25,19 @@ struct LauncherEntry: Identifiable {
         case .website: return "网页"
         }
     }
-    var icon: String {
+    var icon: IconSpec {
         switch target {
-        case .plugin(let entry): return entry.definition.icon
-        case .action: return "bolt"
-        case .workflow: return "arrow.triangle.branch"
-        case .website: return "globe"
+        case .plugin(let entry): return entry.action.icon
+        case .action(let action): return action.icon
+        case .workflow: return .symbol("arrow.triangle.branch")
+        case .website: return .symbol("globe")
+        }
+    }
+    var iconHue: String? {
+        switch target {
+        case .plugin(let entry): return entry.action.iconHue
+        case .action(let action): return action.iconHue
+        case .workflow, .website: return nil
         }
     }
 }

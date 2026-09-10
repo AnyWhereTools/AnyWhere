@@ -5,6 +5,27 @@ import AnyWhereCore
 @testable import AnyWhere
 
 final class LauncherCatalogTests: XCTestCase {
+    func testLauncherUsesConfiguredActionIcons() {
+        for icon in [IconSpec.symbol("terminal"), .imageFile("custom.png")] {
+            let action = MenuAction(id: UUID(), title: "Terminal", icon: icon, kind: .openPluginUI,
+                                    matching: MatchRule(), placement: .topLevel, iconHue: "green",
+                                    isEnabled: true, sortOrder: 0)
+            let plugin = PluginLauncherEntry(id: action.id, action: action,
+                                             definition: PackAction(id: "terminal", title: "Terminal", script: "terminal.zsh"),
+                                             directory: FileManager.default.temporaryDirectory)
+            for target in [LauncherEntry.Target.action(action), .plugin(plugin)] {
+                let entry = LauncherEntry(search: .init(id: action.id, title: action.title, keywords: ["zd"]),
+                                          subtitle: "", target: target)
+                let catalog = LauncherCatalog(entries: [entry])
+                for query in ["zd", ""] {
+                    let result = catalog.search(query, recent: [action.id]).first?.entry
+                    XCTAssertEqual(result?.icon, icon)
+                    XCTAssertEqual(result?.iconHue, "green")
+                }
+            }
+        }
+    }
+
     func testSearchPriorityArgumentsAndRecentPersistence() throws {
         func entry(_ title: String, keys: [String] = [], description: String = "") -> LauncherEntry {
             let action = MenuAction(id: UUID(), title: title, icon: .symbol("bolt"), kind: .openPluginUI,
@@ -24,6 +45,52 @@ final class LauncherCatalogTests: XCTestCase {
         XCTAssertEqual(catalog.search("", recent: recent).map(\.entry.id), [title.id, alias.id])
         XCTAssertEqual(LauncherCatalog(entries: [alias]).search("", recent: recent).map(\.entry.id), [alias.id])
         XCTAssertNotEqual(PackManager.workflowUUID(packKey: "p", workflowID: "a"), PackManager.actionUUID(packKey: "p", packActionID: "a"))
+    }
+}
+
+@MainActor
+final class LauncherPanelTests: XCTestCase {
+    func testSearchTakesKeyboardFocusWithoutActivatingApp() async throws {
+        let controller = PluginLauncherController()
+        let settings = NSWindow(contentRect: .init(x: 0, y: 0, width: 400, height: 300),
+                                styleMask: [.titled], backing: .buffered, defer: false)
+        settings.isReleasedWhenClosed = false
+        settings.makeKeyAndOrderFront(nil)
+        defer { controller.hide(); settings.close() }
+        NSApp.deactivate()
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertFalse(NSApp.isActive)
+        let frontmostPID = try XCTUnwrap(NSWorkspace.shared.frontmostApplication?.processIdentifier)
+        XCTAssertNotEqual(frontmostPID, ProcessInfo.processInfo.processIdentifier)
+
+        controller.toggle()
+        let panel = try XCTUnwrap(NSApp.windows.first { $0.identifier?.rawValue == "AnyWhere.launcher" })
+        defer { panel.contentView = nil; panel.close() }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(panel.styleMask.contains(.nonactivatingPanel))
+        // A nonactivating key panel can report NSApp.isActive; verify the system's frontmost app instead.
+        XCTAssertEqual(NSWorkspace.shared.frontmostApplication?.processIdentifier, frontmostPID)
+        XCTAssertTrue(panel.isKeyWindow)
+        XCTAssertTrue(panel.firstResponder is NSTextView)
+        XCTAssertFalse(settings.isKeyWindow)
+        func assertOnScreen(file: StaticString = #filePath, line: UInt = #line) {
+            let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
+            XCTAssertTrue(windows.contains { ($0[kCGWindowNumber as String] as? Int) == panel.windowNumber }, file: file, line: line)
+        }
+        assertOnScreen()
+
+        controller.toggle()
+        XCTAssertFalse(panel.isVisible)
+        NSApp.deactivate()
+        try await Task.sleep(nanoseconds: 100_000_000)
+        controller.toggle()
+        try await Task.sleep(nanoseconds: 100_000_000)
+        assertOnScreen()
+        XCTAssertTrue(panel.isKeyWindow)
+        XCTAssertEqual(NSWorkspace.shared.frontmostApplication?.processIdentifier, frontmostPID)
+
+        settings.makeKey()
+        XCTAssertFalse(panel.isVisible)
     }
 }
 

@@ -152,11 +152,12 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
         if window?.isKeyWindow != true { finderPath = FinderDirectory.currentPath() }
         if window == nil {
             let w = LauncherPanel(contentRect: NSRect(x: 0, y: 0, width: 680, height: 74),
-                                  styleMask: [.borderless], backing: .buffered, defer: false)
+                                  styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
             w.title = String(localized: "plugins.title")
             w.identifier = NSUserInterfaceItemIdentifier("AnyWhere.launcher")
             w.isOpaque = false; w.backgroundColor = .clear; w.hasShadow = true
             w.level = .floating; w.isMovableByWindowBackground = true
+            w.hidesOnDeactivate = false
             w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             window = w
             w.contentView = NSHostingView(rootView: PluginLauncherView(controller: self, manager: AppState.shared.packManager))
@@ -170,9 +171,9 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
         }
         updateLayout(resultCount: resultCount)
         focusRequest = UUID()
-        // 搜索浮窗点击外部即隐藏；Finder 右键进入插件会话后必须保持可见。
-        window?.hidesOnDeactivate = panelState == .search
-        NSApp.activate(ignoringOtherApps: true); window?.makeKeyAndOrderFront(nil)
+        // 搜索只获取键盘焦点，避免把后台的设置等窗口一起带到前台。
+        if panelState != .search { NSApp.activate(ignoringOtherApps: true) }
+        window?.makeKeyAndOrderFront(nil)
     }
     func updateLayout(resultCount: Int) {
         self.resultCount = resultCount
@@ -191,13 +192,16 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
         window.invalidateShadow()
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool { hide(); return false }
+    func windowDidResignKey(_ notification: Notification) {
+        // 非激活面板按失焦收起，不能依赖应用是否在前台；插件会话仍保持可见。
+        if panelState == .search { window?.orderOut(nil) }
+    }
     func back() {
         guard session?.close(waitForTask: true) ?? true, endWorkflow() else {
             error = String(localized: "plugins.taskStopFailed"); return
         }
         session = nil
         executionID = UUID(); retryAction = nil; error = nil
-        window?.hidesOnDeactivate = true
         focusRequest = UUID()
         updateLayout(resultCount: resultCount)
     }
@@ -572,7 +576,8 @@ struct PluginLauncherView: View {
             HStack(spacing: 14) {
                 switch result {
                 case .plugin(let match):
-                    Image(systemName: match.entry.icon).font(.system(size: 26)).frame(width: 38, height: 38)
+                    ActionIconView(icon: match.entry.icon,
+                                   hue: match.entry.iconHue.flatMap(AppIconHue.init(rawValue:)) ?? .gray, size: 38)
                 case .application(let app):
                     Image(nsImage: NSWorkspace.shared.icon(forFile: app.url.path)).resizable().frame(width: 38, height: 38)
                 }

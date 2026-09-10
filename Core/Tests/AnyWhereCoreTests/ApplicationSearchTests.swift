@@ -2,6 +2,16 @@ import XCTest
 @testable import AnyWhereCore
 
 final class ApplicationSearchTests: XCTestCase {
+    func testCamelCaseInitialsRankAheadOfPrefixes() {
+        let names = ["System Settings", "SiYuan", "WeChat"]
+        let apps = names.map { ApplicationSearchEntry(url: URL(fileURLWithPath: "/Applications/\($0).app"), name: $0) }
+        for query in ["sy", "SY", "siyuan"] {
+            XCTAssertEqual(ApplicationSearch.matches(query: query, apps: apps).first?.name, "SiYuan", query)
+        }
+        XCTAssertEqual(ApplicationSearch.matches(query: "wc", apps: apps).first?.name, "WeChat")
+        XCTAssertTrue(ApplicationSearch.matches(query: "sn", apps: apps).isEmpty)
+    }
+
     func testFindsNestedAppsWithoutHelpersAndRanksNames() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
