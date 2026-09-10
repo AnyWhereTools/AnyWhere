@@ -347,6 +347,12 @@ Schema 1 catalogs are limited to 1000 packages and 2 MiB, with unique IDs/reposi
 and full commit revisions. The selected revision remains fixed through update review
 and installation.
 
+Opening the installed-pack page checks for updates automatically. Opening or refreshing
+the marketplace also refreshes the shared update state. Both collapsed installed rows
+and marketplace entries show an Update button when a new revision is available. Clicking
+downloads the selected latest revision into the existing diff review. Cancelling keeps
+the update available; applying clears it in both views while retaining plugin data.
+
 **Security note for authors and users:** pack scripts run with the user's privileges. Keep
 scripts auditable and dependency-free; users should review every script before enabling it and
 never import packs from untrusted sources.

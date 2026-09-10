@@ -1,6 +1,22 @@
 import XCTest
+import SwiftUI
 import AnyWhereCore
 @testable import AnyWhere
+
+/// Intercept only the test process's catalog request; never change real installed records.
+private final class BazaarCatalogProtocol: URLProtocol {
+    static var response = Data()
+    override class func canInit(with request: URLRequest) -> Bool { request.url == PackDiscovery.endpoint }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                                       headerFields: ["Content-Type": "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Self.response)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
 
 @MainActor
 final class BazaarTests: XCTestCase {
@@ -59,6 +75,79 @@ final class BazaarTests: XCTestCase {
         XCTAssertFalse(PackManager.matchesRevision("unknown", sha))
         var bound = decoded; bound.catalogID = pack.id
         XCTAssertEqual(try JSONDecoder().decode(PackManager.InstalledRecord.self, from: JSONEncoder().encode(bound)).catalogID, pack.id)
+    }
+
+    func testSharedUpdateStateSurvivesCancelAndClearsAfterInstallOrRemoval() async throws {
+        let catalogEntry = try XCTUnwrap(catalog([entry()]).packages.first)
+        let current = String(repeating: "b", count: 40)
+        let manifest = PackManifest(schemaVersion: 4, name: "Tool", actions: [])
+        func installed(_ revision: String, local: Bool = false) -> InstalledPack {
+            InstalledPack(key: "owner-tool", manifest: manifest, repoURL: catalogEntry.repository + ".git",
+                          repo: catalogEntry.repo, commitSHA: revision, enabledCount: 1, totalCount: 1, isLocal: local)
+        }
+        let candidate = PackUpdateAvailable(key: "owner-tool", currentSHA: current, remoteSHA: sha, catalogEntry: catalogEntry)
+        let updates = [candidate.key: candidate]
+        let manager = PackManager(packs: [installed(current)])
+        await manager.checkUpdates(catalog: try catalog([entry()]))
+        XCTAssertEqual(manager.updates, updates)
+        XCTAssertFalse(manager.checkingUpdates)
+        XCTAssertNotNil(manager.lastUpdateCheck)
+        XCTAssertNil(manager.updateCheckError)
+        // Rechecking the same catalogue keeps the same download target for both surfaces.
+        await manager.checkUpdates(catalog: try catalog([entry()]))
+        XCTAssertEqual(manager.updates, updates)
+        // Merely opening/cancelling a review does not change the installed revision.
+        XCTAssertEqual(PackManager.pendingUpdates(updates, installed: [installed(current)]), updates)
+        // Applying the selected revision clears both views; late checks cannot restore the badge.
+        XCTAssertTrue(PackManager.pendingUpdates(updates, installed: [installed(sha)]).isEmpty)
+        XCTAssertTrue(PackManager.pendingUpdates(updates, installed: []).isEmpty)
+        XCTAssertTrue(PackManager.pendingUpdates(updates, installed: [installed(current, local: true)]).isEmpty)
+        // Legacy short commits already at the catalog version must never advertise an update.
+        let same = PackUpdateAvailable(key: candidate.key, currentSHA: String(sha.prefix(7)), remoteSHA: sha, catalogEntry: catalogEntry)
+        XCTAssertTrue(PackManager.pendingUpdates([same.key: same], installed: [installed(same.currentSHA)]).isEmpty)
+        // A user may finish a different update while this request is still in flight.
+        XCTAssertTrue(PackManager.pendingUpdates(updates, installed: [installed(String(repeating: "c", count: 40))]).isEmpty)
+        var bound = installed(current); bound.catalogID = catalogEntry.id
+        let removed = PackManager(packs: [bound])
+        await removed.checkUpdates(catalog: try catalog([]))
+        XCTAssertNotNil(removed.updateCheckError)
+        XCTAssertTrue(removed.updates.isEmpty)
+    }
+
+    func testUpdateButtonsRenderInMarketplaceAndCollapsedInstalledRow() async throws {
+        let response = try JSONSerialization.data(withJSONObject: ["schemaVersion": 1, "packages": [entry()]])
+        BazaarCatalogProtocol.response = response
+        URLProtocol.registerClass(BazaarCatalogProtocol.self)
+        defer { URLProtocol.unregisterClass(BazaarCatalogProtocol.self) }
+        let manifest = PackManifest(schemaVersion: 4, name: "更新界面自测", actions: [])
+        let installed = InstalledPack(key: "owner-tool", manifest: manifest, repoURL: "https://github.com/owner/tool.git",
+            repo: "owner/tool", commitSHA: String(repeating: "b", count: 40), enabledCount: 1, totalCount: 1)
+        let manager = PackManager(packs: [installed])
+        let market = NSHostingView(rootView: DiscoverPacksSheet(packManager: manager, onImport: { _ in }, onUpdate: { _, _ in }, onClose: {}))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 520), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = market; window.makeKeyAndOrderFront(nil)
+        defer { window.contentView = nil; window.close() }
+        for _ in 0..<100 {
+            if manager.lastUpdateCheck != nil || manager.updateCheckError != nil { break }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTAssertNil(manager.updateCheckError)
+        let update = try XCTUnwrap(manager.updates[installed.key])
+        try await Task.sleep(nanoseconds: 100_000_000)
+        try capture(market, path: "/tmp/anywhere-update-market.png")
+        let row = NSHostingView(rootView: PackRow(pack: installed, update: update, expanded: false,
+            onToggleExpand: {}, onSetEnabled: { _, _ in }, onViewScript: { _ in }, onUpdate: {}, onOpenRepo: {}, onUninstall: {}))
+        window.setContentSize(NSSize(width: 800, height: 80)); window.contentView = row
+        try await Task.sleep(nanoseconds: 100_000_000)
+        try capture(row, path: "/tmp/anywhere-update-row.png")
+    }
+
+    private func capture(_ view: NSView, path: String) throws {
+        view.layoutSubtreeIfNeeded()
+        let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        view.cacheDisplay(in: view.bounds, to: bitmap)
+        try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: URL(fileURLWithPath: path))
     }
 
     func testCheckoutPinsSelectedCommitInsteadOfHeadAndCleansFailures() async throws {

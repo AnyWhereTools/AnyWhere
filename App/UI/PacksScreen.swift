@@ -20,16 +20,13 @@ struct ScreenPacks: View {
     @ObservedObject private var state = AppState.shared
 
     @State private var expanded: Set<String> = []
-    /// checkUpdate 结果缓存:key → 远端可用更新。
-    @State private var updates: [String: PackUpdateAvailable] = [:]
-    @State private var lastChecked: Date?
-    @State private var checking = false
 
     // Sheet 路由
     @State private var showImport = false
     @State private var showDiscover = false
     @State private var pendingImport: RepoToImport?
     @State private var updatingPack: InstalledPack?
+    @State private var selectedUpdate: PackUpdateAvailable?
     @State private var scriptViewer: ScriptViewerTarget?
 
     var body: some View {
@@ -43,14 +40,14 @@ struct ScreenPacks: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(AWColor.content)
-        .onAppear { packManager.reload() }
+        .onAppear { packManager.reload(); checkAll() }
         .sheet(isPresented: $showImport) {
             PackImportSheet(packManager: packManager) { showImport = false }
         }
         .sheet(item: $updatingPack) { pack in
-            PackUpdateSheet(packManager: packManager, pack: pack, available: updates[pack.key]) {
-                updates[pack.key] = nil
+            PackUpdateSheet(packManager: packManager, pack: pack, available: selectedUpdate) {
                 updatingPack = nil
+                selectedUpdate = nil
             }
         }
         .sheet(item: $scriptViewer) { target in
@@ -60,12 +57,18 @@ struct ScreenPacks: View {
         }
         .sheet(isPresented: $showDiscover) {
             DiscoverPacksSheet(
-                installedRepos: Set(packManager.packs.filter { !$0.isLocal }.compactMap { PackCatalog.canonicalRepository($0.repoURL) }),
+                packManager: packManager,
                 onImport: { entry in
                     showDiscover = false
                     // 顺序呈现两个 sheet:先关发现,再开导入(预填仓库,仍走完整审查)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                         pendingImport = RepoToImport(entry: entry)
+                    }
+                },
+                onUpdate: { pack, update in
+                    showDiscover = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        beginUpdate(pack, available: update)
                     }
                 },
                 onClose: { showDiscover = false })
@@ -82,7 +85,7 @@ struct ScreenPacks: View {
         VStack(spacing: 0) {
             PacksHeader(onImport: { showImport = true },
                         onBrowse: browse,
-                        checking: checking,
+                        checking: packManager.checkingUpdates,
                         onCheckAll: checkAll)
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -91,14 +94,14 @@ struct ScreenPacks: View {
                             if i > 0 { Rectangle().fill(AWColor.separator).frame(height: 0.5) }
                             PackRow(
                                 pack: pack,
-                                update: updates[pack.key],
+                                update: packManager.updates[pack.key],
                                 expanded: expanded.contains(pack.key),
                                 onToggleExpand: { toggleExpand(pack.key) },
                                 onSetEnabled: { enabled, actionID in
                                     packManager.setActionEnabled(enabled, actionID: actionID)
                                 },
                                 onViewScript: { viewScript(pack: pack, action: $0) },
-                                onUpdate: { updatingPack = pack },
+                                onUpdate: { beginUpdate(pack, available: packManager.updates[pack.key]) },
                                 onOpenRepo: { openRepo(pack) },
                                 onUninstall: { uninstall(pack) }
                             )
@@ -114,6 +117,9 @@ struct ScreenPacks: View {
                         .foregroundStyle(AWColor.label3)
                         .padding(.horizontal, 4)
                         .padding(.top, 10)
+                    if let error = packManager.updateCheckError {
+                        Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 14)
@@ -123,7 +129,7 @@ struct ScreenPacks: View {
 
     private var footerText: String {
         let checked: String
-        if let lastChecked {
+        if let lastChecked = packManager.lastUpdateCheck {
             let f = DateFormatter()
             f.dateFormat = String(localized: "packs.lastCheckedFormatToday")
             if !Calendar.current.isDateInToday(lastChecked) {
@@ -173,33 +179,19 @@ struct ScreenPacks: View {
         if alert.runModal() == .alertFirstButtonReturn {
             do {
                 try packManager.uninstall(pack.key, clearData: clear.state == .on)
-                expanded.remove(pack.key); updates[pack.key] = nil
+                expanded.remove(pack.key)
             } catch { NSAlert(error: error).runModal() }
         }
     }
 
     private func checkAll() {
-        guard !checking else { return }
-        checking = true
-        Task {
-            defer { checking = false }
-            do {
-                let remote = packManager.packs.filter { !$0.isLocal }
-                guard !remote.isEmpty else { lastChecked = Date(); return }
-                let catalog = remote.contains { PackCatalog.canonicalRepository($0.repoURL) != nil }
-                    ? try await PackDiscovery.catalog() : PackCatalog(schemaVersion: 1, packages: [])
-                var found: [String: PackUpdateAvailable] = [:]
-                var failures: [String] = []
-                for pack in remote {
-                    do {
-                        if let upd = try await packManager.checkUpdate(pack.key, catalog: catalog) { found[pack.key] = upd }
-                    } catch { failures.append(pack.manifest.name + ": " + error.localizedDescription) }
-                }
-                updates = found
-                if failures.isEmpty { lastChecked = Date() }
-                else { throw PackCatalog.Failure(failures.joined(separator: "\n")) }
-            } catch { NSAlert(error: error).runModal() }
-        }
+        guard !packManager.checkingUpdates else { return }
+        Task { await packManager.checkUpdates() }
+    }
+
+    private func beginUpdate(_ pack: InstalledPack, available: PackUpdateAvailable?) {
+        selectedUpdate = available
+        updatingPack = pack
     }
 
     private func viewScript(pack: InstalledPack, action: MenuAction) {
@@ -305,37 +297,44 @@ struct PackRow: View {
     }
 
     private var header: some View {
-        Button(action: onToggleExpand) {
-            HStack(spacing: 10) {
-                Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(AWColor.label3)
-                    .frame(width: 12)
-                AppIcon(pack.manifest.icon, size: 30, hue: .teal)
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 7) {
-                        Text(pack.manifest.name)
-                            .font(.system(size: 13.5, weight: .semibold))
-                            .foregroundStyle(AWColor.label)
-                        if update != nil {
-                            AWDot()
-                            Badge(String(localized: "packs.updateAvailable"), tone: .accent)
+        HStack(spacing: 0) {
+            Button(action: onToggleExpand) {
+                HStack(spacing: 10) {
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(AWColor.label3)
+                        .frame(width: 12)
+                    AppIcon(pack.manifest.icon, size: 30, hue: .teal)
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 7) {
+                            Text(pack.manifest.name)
+                                .font(.system(size: 13.5, weight: .semibold))
+                                .foregroundStyle(AWColor.label)
+                            if update != nil {
+                                AWDot()
+                                Badge(String(localized: "packs.updateAvailable"), tone: .accent)
+                            }
                         }
+                        Text("\(pack.repo) · \(pack.isLocal ? String(localized: "packs.localSource") : String(pack.commitSHA.prefix(12)))")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(AWColor.label2)
                     }
-                    Text("\(pack.repo) · \(pack.isLocal ? String(localized: "packs.localSource") : String(pack.commitSHA.prefix(12)))")
-                        .font(.system(size: 11, design: .monospaced))
+                    Spacer(minLength: 0)
+                    Text(String(format: String(localized: "packs.enabledCount"), pack.enabledCount, pack.totalCount))
+                        .font(.system(size: 12))
                         .foregroundStyle(AWColor.label2)
                 }
-                Spacer(minLength: 0)
-                Text(String(format: String(localized: "packs.enabledCount"), pack.enabledCount, pack.totalCount))
-                    .font(.system(size: 12))
-                    .foregroundStyle(AWColor.label2)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            if update != nil {
+                AWButton(String(localized: "packs.updateEllipsis"), systemImage: "arrow.down.circle",
+                         kind: .primary, size: .sm, action: onUpdate)
+                    .padding(.trailing, 14)
+            }
         }
-        .buttonStyle(.plain)
     }
 
     private var expandedBody: some View {
@@ -411,10 +410,6 @@ struct PackRow: View {
             HStack(spacing: 8) {
                 if pack.isLocal && developerMode {
                     AWButton(String(localized: "plugins.reloadLocal"), size: .sm, action: onUpdate)
-                }
-                if update != nil {
-                    AWButton(String(localized: "packs.updateEllipsis"), systemImage: "arrow.down.circle",
-                             kind: .primary, size: .sm, action: onUpdate)
                 }
                 AWButton(pack.isLocal ? String(localized: "packs.openLocalFolder") : String(localized: "packs.openRepoHome"),
                          systemImage: pack.isLocal ? "folder" : "arrow.up.right.square",

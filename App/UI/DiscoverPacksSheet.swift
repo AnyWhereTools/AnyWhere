@@ -4,8 +4,9 @@ import SwiftUI
 import AppKit
 
 struct DiscoverPacksSheet: View {
-    let installedRepos: Set<String>     // Canonical HTTPS repository URLs, lowercase.
+    @ObservedObject var packManager: PackManager
     let onImport: (CatalogPack) -> Void
+    let onUpdate: (InstalledPack, PackUpdateAvailable) -> Void
     let onClose: () -> Void
 
     private enum Phase: Equatable {
@@ -16,6 +17,7 @@ struct DiscoverPacksSheet: View {
     @State private var phase: Phase = .loading
     @State private var query = ""
     @State private var type = ""
+    @State private var loadTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,11 +32,15 @@ struct DiscoverPacksSheet: View {
                 }.frame(width: 150)
             }.padding(.horizontal, 20).padding(.vertical, 10)
             content
+            if let error = packManager.updateCheckError {
+                Text(error).font(.caption).foregroundStyle(.red).lineLimit(3).padding(.horizontal, 20)
+            }
             footer
         }
         .frame(width: 560, height: 520)
         .background(AWColor.content)
         .onAppear(perform: load)
+        .onDisappear { loadTask?.cancel() }
     }
 
     private var header: some View {
@@ -97,7 +103,7 @@ struct DiscoverPacksSheet: View {
     }
 
     private func row(_ pack: CatalogPack) -> some View {
-        let installed = installedRepos.contains(pack.repository.lowercased())
+        let installed = packManager.packs.first { !$0.isLocal && PackCatalog.canonicalRepository($0.repoURL) == pack.repository.lowercased() }
         return HStack(spacing: 11) {
             AppIcon(pack.icon, size: 30, hue: .teal)
             VStack(alignment: .leading, spacing: 1) {
@@ -107,8 +113,14 @@ struct DiscoverPacksSheet: View {
                 }
             }
             Spacer(minLength: 8)
-            if installed {
-                Badge(String(localized: "discover.installed"), tone: .green)
+            if let installed {
+                if let update = packManager.updates[installed.key], update.catalogEntry?.id == pack.id,
+                   update.remoteSHA == pack.revision {
+                    AWButton(String(localized: "packs.updateEllipsis"), systemImage: "arrow.down.circle",
+                             kind: .primary, size: .sm) { onUpdate(installed, update) }
+                } else {
+                    Badge(String(localized: "discover.installed"), tone: .green)
+                }
             } else {
                 AWButton(String(localized: "discover.import"), kind: .primary, size: .sm) { onImport(pack) }
             }
@@ -134,13 +146,17 @@ struct DiscoverPacksSheet: View {
     }
 
     private func load() {
+        loadTask?.cancel()
         phase = .loading
-        Task {
+        loadTask = Task {
             do {
-                let packs = try await PackDiscovery.catalog().packages
-                await MainActor.run { phase = .loaded(packs) }
+                let catalog = try await PackDiscovery.catalog()
+                guard !Task.isCancelled else { return }
+                phase = .loaded(catalog.packages)
+                await packManager.checkUpdates(catalog: catalog)
             } catch {
-                await MainActor.run { phase = .failed(error.localizedDescription) }
+                guard !Task.isCancelled else { return }
+                phase = .failed(error.localizedDescription)
             }
         }
     }

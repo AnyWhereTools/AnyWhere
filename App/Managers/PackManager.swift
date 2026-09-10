@@ -15,6 +15,7 @@ struct InstalledPack: Identifiable, Equatable {
     let enabledCount: Int        // config 中 packID==key 且 isEnabled 的动作数
     let totalCount: Int          // config 中 packID==key 的动作数
     var isLocal = false
+    var catalogID: String? = nil
 }
 
 /// `clone` 的产物:已克隆到临时目录、解析+校验过的包,附每个动作脚本源码供审查。
@@ -75,6 +76,11 @@ struct PluginLauncherEntry: Identifiable {
 @MainActor
 final class PackManager: ObservableObject {
     @Published private(set) var packs: [InstalledPack] = []
+    @Published private(set) var updates: [String: PackUpdateAvailable] = [:]
+    @Published private(set) var checkingUpdates = false
+    @Published private(set) var lastUpdateCheck: Date?
+    @Published private(set) var updateCheckError: String?
+    private var updateCheckGeneration = 0
     let preferences = PluginPreferencesStore(directory: AppPaths.configDirectory())
     static func dataDirectory(_ key: String) -> URL {
         AppPaths.configDirectory().appendingPathComponent("PluginData", isDirectory: true).appendingPathComponent(key, isDirectory: true)
@@ -84,8 +90,9 @@ final class PackManager: ObservableObject {
     /// 默认参数避免引用 @MainActor 的 AppState.shared(默认参数在非隔离上下文求值);
     /// 传 nil 时由 appState() 在 @MainActor 调用点惰性解析。
     private let appStateOverride: (() -> AppState)?
-    init(appState: (() -> AppState)? = nil) {
+    init(appState: (() -> AppState)? = nil, packs: [InstalledPack] = []) {
         self.appStateOverride = appState
+        self.packs = packs
     }
     private func appState() -> AppState { appStateOverride?() ?? AppState.shared }
 
@@ -132,9 +139,10 @@ final class PackManager: ObservableObject {
                 key: rec.key, manifest: rec.manifest, repoURL: rec.repoURL,
                 repo: rec.repo, commitSHA: rec.commitSHA,
                 enabledCount: mine.filter { $0.isEnabled || (try? preferences.isEnabled(actionID: $0.id)) == true }.count,
-                totalCount: mine.count, isLocal: rec.isLocal == true)
+                totalCount: mine.count, isLocal: rec.isLocal == true, catalogID: rec.catalogID)
         }
         .sorted { $0.manifest.name.localizedCaseInsensitiveCompare($1.manifest.name) == .orderedAscending }
+        updates = Self.pendingUpdates(updates, installed: packs)
         PluginLauncherController.shared.validateSession(using: self)
         PluginServices.shared.reconcile(launcherEntries())
     }
@@ -405,9 +413,48 @@ final class PackManager: ObservableObject {
 
     // MARK: - Update: check (compare remote HEAD SHA vs local)
 
+    /// Both settings and the marketplace publish into this same update list.
+    func checkUpdates(catalog suppliedCatalog: PackCatalog? = nil) async {
+        updateCheckGeneration += 1
+        let generation = updateCheckGeneration
+        checkingUpdates = true
+        updateCheckError = nil
+        defer { if generation == updateCheckGeneration { checkingUpdates = false } }
+        do {
+            let remote = packs.filter { !$0.isLocal }
+            let catalog: PackCatalog
+            if let suppliedCatalog { catalog = suppliedCatalog }
+            else if remote.contains(where: { PackCatalog.canonicalRepository($0.repoURL) != nil }) {
+                catalog = try await PackDiscovery.catalog()
+            } else { catalog = PackCatalog(schemaVersion: 1, packages: []) }
+            var found: [String: PackUpdateAvailable] = [:]
+            var failures: [String] = []
+            for pack in remote {
+                guard generation == updateCheckGeneration, !Task.isCancelled else { return }
+                do {
+                    if let update = try await checkUpdate(pack.key, catalog: catalog) { found[pack.key] = update }
+                } catch { failures.append(pack.manifest.name + ": " + error.localizedDescription) }
+            }
+            guard generation == updateCheckGeneration, !Task.isCancelled else { return }
+            updates = Self.pendingUpdates(found, installed: packs)
+            if failures.isEmpty { lastUpdateCheck = Date() }
+            else { updateCheckError = failures.joined(separator: "\n") }
+        } catch {
+            guard generation == updateCheckGeneration, !Task.isCancelled else { return }
+            updateCheckError = error.localizedDescription
+        }
+    }
+
+    /// A cancelled review leaves the installed revision unchanged, so its update stays visible.
+    /// Reload after apply/uninstall drops stale candidates, including late network responses.
+    static func pendingUpdates(_ candidates: [String: PackUpdateAvailable], installed: [InstalledPack]) -> [String: PackUpdateAvailable] {
+        candidates.filter { key, update in
+            installed.contains { $0.key == key && !$0.isLocal && $0.commitSHA == update.currentSHA && !matchesRevision($0.commitSHA, update.remoteSHA) }
+        }
+    }
+
     func checkUpdate(_ key: String, catalog: PackCatalog) async throws -> PackUpdateAvailable? {
-        guard let rec = Self.loadInstalled().first(where: { $0.key == key }) else { return nil }
-        guard rec.isLocal != true else { return nil }
+        guard let rec = packs.first(where: { $0.key == key }), !rec.isLocal else { return nil }
         if let entry = try catalog.entry(repository: rec.repoURL, catalogID: rec.catalogID) {
             guard !Self.matchesRevision(rec.commitSHA, entry.revision) else { return nil }
             return PackUpdateAvailable(key: key, currentSHA: rec.commitSHA, remoteSHA: entry.revision, catalogEntry: entry)
