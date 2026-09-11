@@ -253,6 +253,30 @@ final class OfficialPluginTests: XCTestCase {
         XCTAssertEqual(deletion?["removed"] as? Bool, true)
         XCTAssertEqual(deletion?["count"] as? Int, deletion?["expected"] as? Int)
         XCTAssertEqual(deletion?["moved"] as? Bool, true)
+        // Check actual WebKit control geometry; native select styling previously
+        // ignored padding and rendered at half the search field's height.
+        for width in [380, 540, 960] {
+            session.webView.window?.setContentSize(NSSize(width: CGFloat(width), height: 760))
+            session.webView.window?.appearance = NSAppearance(named: width == 540 ? .darkAqua : .aqua)
+            let layout = try await js(session, """
+              await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+              const search=document.querySelector('.search-field').getBoundingClientRect(),sort=document.getElementById('sort').getBoundingClientRect();
+              document.getElementById('new').click();
+              const selects=[...document.querySelectorAll('#form select')].map(el=>el.getBoundingClientRect().height);
+              const fields=[...document.querySelectorAll('#form input')].map(el=>el.getBoundingClientRect().height);
+              const save=document.getElementById('save').getBoundingClientRect();
+              return {aligned:Math.abs(search.height-sort.height)<1&&Math.abs(search.top-sort.top)<1,
+                usable:[...selects,...fields].every(h=>h>=34&&Math.abs(h-sort.height)<1),saveVisible:save.top>=0&&save.bottom<=innerHeight,
+                overflow:document.documentElement.scrollWidth>innerWidth};
+              """) as? [String: Any]
+            XCTAssertEqual(layout?["aligned"] as? Bool, true, "Search/sort at \(width)px")
+            XCTAssertEqual(layout?["usable"] as? Bool, true, "Detail controls at \(width)px")
+            XCTAssertEqual(layout?["saveVisible"] as? Bool, true, "Save button at \(width)px")
+            XCTAssertEqual(layout?["overflow"] as? Bool, false, "Overflow at \(width)px")
+            try await capture(session, name: "todo-controls-\(width)-detail")
+            _ = try await js(session, "document.getElementById('cancel').click()")
+            try await capture(session, name: "todo-controls-\(width)")
+        }
     }
 
     func testTodoActualFormPersistsAndSchedulesIndependently() async throws {
