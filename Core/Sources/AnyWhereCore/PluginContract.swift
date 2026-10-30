@@ -87,7 +87,7 @@ public enum JSONValue: Codable, Equatable, Sendable {
 
 public struct PluginError: Error, LocalizedError, Codable, Equatable, Sendable {
     public enum Code: String, Codable, Sendable {
-        case invalidArguments, denied, sessionClosed, busy, failed, timedOut, cancelled, outputLimit, storageLimit
+        case invalidArguments, denied, sessionClosed, busy, failed, timedOut, cancelled, outputLimit, storageLimit, conflict, notFound, outcomeUnknown
     }
     public let code: Code
     public let message: String

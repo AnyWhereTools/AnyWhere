@@ -21,7 +21,7 @@ struct CatalogPack: Identifiable, Decodable, Equatable {
               revision.range(of: "^[0-9a-f]{40}$", options: .regularExpression) != nil,
               !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, name.utf8.count <= 512,
               (description?.utf8.count ?? 0) <= 8192, (author?.utf8.count ?? 0) <= 512,
-              icon.utf8.count <= 256, (1...4).contains(manifestSchemaVersion),
+              icon.utf8.count <= 256, (1...PackManifest.currentSchemaVersion).contains(manifestSchemaVersion),
               !types.isEmpty, Set(types).count == types.count,
               Set(types).isSubset(of: ["finder", "tool", "workflow"]) else {
             throw PackCatalog.Failure("Invalid Bazaar entry: \(id.prefix(100))")

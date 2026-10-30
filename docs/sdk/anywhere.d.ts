@@ -14,7 +14,7 @@ interface PluginInvocation {
 }
 interface PluginFailure {
   code: 'invalidArguments' | 'denied' | 'sessionClosed' | 'busy' | 'failed' |
-    'timedOut' | 'cancelled' | 'outputLimit' | 'storageLimit';
+    'timedOut' | 'cancelled' | 'outputLimit' | 'storageLimit' | 'conflict' | 'notFound' | 'outcomeUnknown';
   message: string;
 }
 interface PluginTaskResult {
@@ -30,6 +30,16 @@ interface PluginTask {
   onOutput(callback: (event: {id: string; stream: 'stdout' | 'stderr'; text: string}) => void): () => void;
 }
 interface AnyWhereSDK {
+  /** Schema 5. Commands serialize across windows, MCP clients and reminders in this pack.
+   * Only the declared background entry may write managed storage keys.
+   */
+  commands: {
+    register(handlers: Record<string, (params: Record<string, JSONValue>) => Promise<JSONValue>>): void;
+    invoke(operation: string, params?: Record<string, JSONValue>): Promise<JSONValue>;
+    /** Opaque content versions; do not parse these tokens. */
+    fingerprints(values: JSONValue[]): Promise<string[]>;
+    onChanged(callback: () => void): () => void;
+  };
   /** `documents` capability. UTF-8, <=50 MiB; native picker grants file access.
    * Transfers use bounded chunks without increasing the ordinary 1 MiB bridge limit.
    * Drafts are isolated per action. markDirty/saveDraft version prevents stale saves clearing newer edits.

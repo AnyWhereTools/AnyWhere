@@ -4,6 +4,19 @@ import UserNotifications
 import AnyWhereCore
 @testable import AnyWhere
 
+/// Fixture-only access stays outside the production storage bridge.
+@MainActor private final class TodoFixtureSeeder: NSObject, WKScriptMessageHandlerWithReply {
+    let packKey: String
+    init(packKey: String) { self.packKey = packKey }
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage, replyHandler: @escaping (Any?, String?) -> Void) {
+        do {
+            let value = try JSONDecoder().decode(JSONValue.self, from: JSONSerialization.data(withJSONObject: message.body))
+            try PluginDataStore(directory: PackManager.dataDirectory(packKey)).set("todos", value: value)
+            replyHandler(NSNull(), nil)
+        } catch { replyHandler(nil, error.localizedDescription) }
+    }
+}
+
 @MainActor
 final class OfficialPluginTests: XCTestCase {
     private var sessions: [PluginSession] = []
@@ -29,6 +42,7 @@ final class OfficialPluginTests: XCTestCase {
                                 matching: MatchRule(), placement: .topLevel, packID: packKey, isEnabled: true, sortOrder: 0)
         let entry = PluginLauncherEntry(id: id, action: action, definition: manifest.actions[0], directory: root)
         let session = PluginSession(entry: entry, invocation: PluginInvocation(actionID: id, source: .launcher, argument: argument))
+        session.webView.configuration.userContentController.addScriptMessageHandler(TodoFixtureSeeder(packKey: packKey), contentWorld: .page, name: "seedTodo")
         folders.append(PackManager.dataDirectory(packKey)); sessions.append(session)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 960, height: 700), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false; window.contentView = session.webView; windows.append(window)
@@ -170,10 +184,11 @@ final class OfficialPluginTests: XCTestCase {
         session.webView.window?.appearance = NSAppearance(named: .aqua)
         let result = try await js(session, """
           let step='initial';
-          const wait = async predicate => { const end=Date.now()+5000;while(Date.now()<end){if(await predicate())return;await new Promise(r=>setTimeout(r,25));}throw new Error('UI did not settle: '+step+' / '+document.getElementById('message').textContent); };
+          const submits=[];document.addEventListener('submit',e=>submits.push({id:e.target.id,busy,ready,quick:document.getElementById('quick-title').value}),true);
+          const wait = async predicate => { const end=Date.now()+5000;while(Date.now()<end){if(await predicate())return;await new Promise(r=>setTimeout(r,25));}throw new Error('UI did not settle: '+step+' / '+document.getElementById('message').textContent+' / '+JSON.stringify({disabled:document.getElementById('new').disabled,quickDisabled:document.getElementById('quick-title').disabled,submits,stored:await anywhere.storage.get('todos')})); };
           await wait(()=>!document.getElementById('new').disabled);
           const legacy={schemaVersion:1,items:[{id:'legacy-task',title:'整理本周的灵感',note:'保留旧版任务和备注',priority:1,done:false,due:null,recurrence:'none'}]};
-          await anywhere.storage.set('todos',legacy); step='reload legacy';
+          await window.webkit.messageHandlers.seedTodo.postMessage(legacy); step='reload legacy';
           document.getElementById('reload').click();
           await wait(()=>!document.getElementById('new').disabled);
           document.querySelector('[data-view="inbox"]').click();
@@ -199,7 +214,7 @@ final class OfficialPluginTests: XCTestCase {
           const state=await anywhere.storage.get('todos');
           // Prepare only isolated test data for a representative native screenshot.
           state.items.push({id:'review',title:'阅读两篇产品设计文章',note:'把值得尝试的想法留在备注里',priority:0,done:false,due:null,recurrence:'none',deadline:Todo.dayKey(),listId:null,createdAt:Date.now(),completedAt:null});
-          await anywhere.storage.set('todos',state);document.getElementById('reload').click();
+          await window.webkit.messageHandlers.seedTodo.postMessage(state);document.getElementById('reload').click();
           await wait(()=>!document.getElementById('new').disabled);
           return {migrated,backup,completed,state,overflow:document.documentElement.scrollWidth>window.innerWidth};
           """) as? [String: Any]
@@ -214,15 +229,15 @@ final class OfficialPluginTests: XCTestCase {
         try await capture(session, name: "todo-product")
         let protection = try await js(session, """
           const saved=await anywhere.storage.get('todos');
-          await anywhere.storage.set('todos',{schemaVersion:99,items:[]});document.getElementById('reload').click();
+          await window.webkit.messageHandlers.seedTodo.postMessage({schemaVersion:99,items:[]});document.getElementById('reload').click();
           for(let i=0;i<100&&document.getElementById('load-error').hidden;i++)await new Promise(r=>setTimeout(r,25));
           const protectedRead=document.getElementById('new').disabled && (await anywhere.storage.get('todos')).schemaVersion===99;
-          await anywhere.storage.set('todos',saved);document.getElementById('reload').click();
+          await window.webkit.messageHandlers.seedTodo.postMessage(saved);document.getElementById('reload').click();
           for(let i=0;i<100&&document.getElementById('new').disabled;i++)await new Promise(r=>setTimeout(r,25));
           const task=saved.items.find(t=>t.title==='完成插件交互稿');document.querySelector('#todo-'+task.id+' .task-title').click();
           const external={...saved,items:saved.items.map(t=>t.id===task.id?{...t,title:'另一个窗口的新标题'}:t)};
-          await anywhere.storage.set('todos',external);document.getElementById('title').value='过期的编辑';document.getElementById('form').requestSubmit();
-          for(let i=0;i<100&&!document.getElementById('message').textContent.includes('另一窗口');i++)await new Promise(r=>setTimeout(r,25));
+          await window.webkit.messageHandlers.seedTodo.postMessage(external);document.getElementById('title').value='过期的编辑';document.getElementById('form').requestSubmit();
+          for(let i=0;i<100&&!document.getElementById('message').textContent.includes('其他操作');i++)await new Promise(r=>setTimeout(r,25));
           return {protectedRead,conflictTitle:(await anywhere.storage.get('todos')).items.find(t=>t.id===task.id).title};
           """) as? [String: Any]
         XCTAssertEqual(protection?["protectedRead"] as? Bool, true)
@@ -238,15 +253,16 @@ final class OfficialPluginTests: XCTestCase {
         XCTAssertEqual(modal, true)
         try await capture(session, name: "todo-product-detail-dark")
         let deletion = try await js(session, """
-          const wait=async predicate=>{const end=Date.now()+5000;while(Date.now()<end){if(await predicate())return;await new Promise(r=>setTimeout(r,25));}throw new Error('Delete/undo did not settle');};
+          let step='reload';
+          const wait=async predicate=>{const end=Date.now()+5000;while(Date.now()<end){if(await predicate())return;await new Promise(r=>setTimeout(r,25));}throw new Error('Delete/undo did not settle: '+step+' / '+document.getElementById('message').textContent+' / '+JSON.stringify({disabled:document.getElementById('new').disabled,stored:await anywhere.storage.get('todos')}));};
           window.confirm=()=>true; // Accept only this isolated test page's destructive-action prompts.
           document.getElementById('cancel').click();document.getElementById('reload').click();await wait(()=>!document.getElementById('new').disabled);
           const before=await anywhere.storage.get('todos'),task=before.items.find(t=>t.title==='另一个窗口的新标题');
-          document.querySelector('#todo-'+task.id+' .task-title').click();document.getElementById('delete').click();
+          step='delete';document.querySelector('#todo-'+task.id+' .task-title').click();document.getElementById('delete').click();
           await wait(()=>!document.getElementById('undo').hidden&&!document.getElementById('new').disabled);
           const removed=!(await anywhere.storage.get('todos')).items.some(t=>t.id===task.id);
-          document.getElementById('undo').click();await wait(async()=> (await anywhere.storage.get('todos')).items.length===before.items.length&&!document.getElementById('new').disabled);
-          document.querySelector('[data-view="list:'+task.listId+'"]').click();document.getElementById('manage-list').click();document.getElementById('list-delete').click();
+          step='undo';document.getElementById('undo').click();await wait(async()=> (await anywhere.storage.get('todos')).items.length===before.items.length&&!document.getElementById('new').disabled);
+          step='delete list';document.querySelector('[data-view="list:'+task.listId+'"]').click();document.getElementById('manage-list').click();document.getElementById('list-delete').click();
           await wait(async()=> (await anywhere.storage.get('todos')).lists.length===0&&!document.getElementById('new').disabled);
           const after=await anywhere.storage.get('todos');return {removed,count:after.items.length,expected:before.items.length,moved:after.items.find(t=>t.id===task.id).listId===null};
           """) as? [String: Any]
@@ -282,7 +298,7 @@ final class OfficialPluginTests: XCTestCase {
     func testTodoActualFormPersistsAndSchedulesIndependently() async throws {
         let session = try await load("anywhere-todo")
         let result = try await js(session, """
-          await new Promise(r=>setTimeout(r,400));
+          for(let i=0;i<200&&document.getElementById('new').disabled;i++)await new Promise(r=>setTimeout(r,25));
           document.getElementById('new').click();document.getElementById('title').value='测试待办';
           document.getElementById('note').value='保留备注';document.getElementById('form').requestSubmit();
           for(let i=0;i<200&&!document.getElementById('message').textContent.includes('已保存');i++)await new Promise(r=>setTimeout(r,25));
@@ -293,7 +309,7 @@ final class OfficialPluginTests: XCTestCase {
         try await capture(session, name: "todo")
         let itemID = ((result?["items"] as? [[String: Any]])?.first?["id"] as? String)!
         session.activate(PluginInvocation(actionID: session.entry.id, source: .launcher, argument: itemID))
-        let activation = try await js(session, "await new Promise(r=>setTimeout(r,50));return {argument:(await anywhere.getInvocation()).argument,title:document.getElementById('title').value,visible:!document.getElementById('form').hidden}") as? [String: Any]
+        let activation = try await js(session, "for(let i=0;i<200&&document.getElementById('form').hidden;i++)await new Promise(r=>setTimeout(r,25));return {argument:(await anywhere.getInvocation()).argument,title:document.getElementById('title').value,visible:!document.getElementById('form').hidden}") as? [String: Any]
         XCTAssertEqual(activation?["argument"] as? String, itemID); XCTAssertEqual(activation?["visible"] as? Bool, true)
         let authorized = await PluginServices.shared.status()
         print("System notification authorization: \(authorized)")

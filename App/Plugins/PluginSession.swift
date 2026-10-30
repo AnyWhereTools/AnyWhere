@@ -23,14 +23,27 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
     private var navigationStarted = false
     private lazy var dataStore = PluginDataStore(directory: PackManager.dataDirectory(entry.action.packID!))
     private lazy var documents = PluginDocuments(directory: PluginServices.directory(entry))
+    private let notificationServices: PluginServices
+    private let commandOperation: String?
+    private let commandRuntime: PluginCommandRuntime
+    private let commandAuthorization: @MainActor () throws -> Void
+    private var storageObserver: NSObjectProtocol?
+    private var commandWrote = false
+    private var hostOperations = 0
     private(set) var webView: WKWebView!
 
     init(entry: PluginLauncherEntry, invocation: PluginInvocation, workflowInput: JSONValue? = nil,
-         onComplete: ((JSONValue) -> Void)? = nil) {
+         onComplete: ((JSONValue) -> Void)? = nil, notificationServices: PluginServices? = nil,
+         command: String? = nil, commandRuntime: PluginCommandRuntime? = nil,
+         commandAuthorization: @escaping @MainActor () throws -> Void = {}) {
         self.entry = entry; self.invocation = invocation
+        self.notificationServices = notificationServices ?? .shared
+        self.commandOperation = command; self.commandRuntime = commandRuntime ?? .shared
+        self.commandAuthorization = commandAuthorization
         self.workflowInput = workflowInput; self.onComplete = onComplete
-        pagePath = URL(fileURLWithPath: "/" + entry.definition.ui!.entry).standardizedFileURL.path
+        pagePath = URL(fileURLWithPath: "/" + (command == nil ? entry.definition.ui!.entry : entry.definition.commands!.entry)).standardizedFileURL.path
         super.init()
+        self.commandRuntime.remember(entry, services: self.notificationServices)
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         configuration.setURLSchemeHandler(self, forURLScheme: "anywhere-plugin")
@@ -43,6 +56,15 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
         var url = URLComponents()
         url.scheme = "anywhere-plugin"; url.host = id; url.path = pagePath
         webView.load(URLRequest(url: url.url!))
+        if command == nil {
+            storageObserver = NotificationCenter.default.addObserver(forName: PluginCommandRuntime.storageChanged, object: nil, queue: .main) { [weak self] note in
+                guard let pack = note.object as? String else { return }
+                Task { @MainActor in
+                    guard let self, !self.closed, self.entry.action.packID == pack else { return }
+                    self.webView.callAsyncJavaScript("window.__anywhereStorageChanged()", arguments: [:], in: nil, in: .page) { _ in }
+                }
+            }
+        }
     }
 
     @discardableResult func close(waitForTask: Bool = false, discardUnsaved: Bool = false) -> Bool {
@@ -55,6 +77,7 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
             guard alert.runModal() == .alertSecondButtonReturn else { return false }
         }
         documents.close()
+        if let storageObserver { NotificationCenter.default.removeObserver(storageObserver); self.storageObserver = nil }
         closed = true; task?.cancel()
         waiter?(nil, "sessionClosed: Session ended."); waiter = nil
         webView.stopLoading()
@@ -67,6 +90,48 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
 
     private func encoded<T: Encodable>(_ value: T) throws -> Any {
         try JSONSerialization.jsonObject(with: JSONEncoder().encode(value), options: [.fragmentsAllowed])
+    }
+    func performCommand(_ operation: String, params: JSONValue) async throws -> JSONValue {
+        let timeout = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 20_000_000_000)
+            guard !Task.isCancelled else { return }
+            self?.close(discardUnsaved: true)
+        }
+        defer { timeout.cancel() }
+        do {
+            for _ in 0..<200 {
+                guard !closed else { throw PluginError(.timedOut, "Command timed out.") }
+                if webView.url != nil && !webView.isLoading { break }
+                try await Task.sleep(nanoseconds: 25_000_000)
+            }
+            guard !closed else { throw PluginError(.timedOut, "Command timed out.") }
+            let result = try await webView.callAsyncJavaScript("return await window.__anywhereCommand(operation, params)",
+                arguments: ["operation": operation, "params": try encoded(params)], in: nil, contentWorld: .page)
+            let envelope = result as? [String: Any] ?? [:]
+            if let failure = envelope["error"] as? [String: String] {
+                throw PluginError(PluginError.Code(rawValue: failure["code"] ?? "") ?? .failed, failure["message"] ?? "Command failed.")
+            }
+            guard let raw = envelope["value"] else { throw PluginError(.failed, "Command returned no result.") }
+            let data = try JSONSerialization.data(withJSONObject: raw, options: [.fragmentsAllowed])
+            guard data.count <= 1024 * 1024 else { throw PluginError(.outputLimit, "Command output exceeds 1 MiB.") }
+            return try JSONDecoder().decode(JSONValue.self, from: data)
+        } catch {
+            if commandWrote { throw PluginError(.outcomeUnknown, "Command ended after saving; query current state before retrying.") }
+            throw error
+        }
+    }
+    private func requireCommandWrite(key: String? = nil) throws {
+        if let operation = commandOperation {
+            guard commandRuntime.isCurrent(entry), entry.definition.commands?.operations[operation]?.readOnly == false,
+                  key.map({ entry.definition.commands?.storageKeys.contains($0) == true }) ?? true else {
+                throw PluginError(.denied, "Command cannot modify this resource.")
+            }
+            try commandAuthorization()
+        } else if let key, commandRuntime.managedKeys(pack: entry.action.packID!).contains(key) {
+            throw PluginError(.denied, "This storage key must be modified through a plugin command.")
+        } else if key == nil && entry.definition.commands != nil {
+            throw PluginError(.denied, "Reminders must be modified through a plugin command.")
+        }
     }
     func activate(_ invocation: PluginInvocation) {
         guard !closed else { return }
@@ -84,8 +149,12 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
         try JSONDecoder().decode(type, from: JSONSerialization.data(withJSONObject: raw, options: [.fragmentsAllowed]))
     }
     private func replyAsync(_ reply: @escaping (Any?, String?) -> Void, operation: @escaping @MainActor () async throws -> Any) {
+        hostOperations += 1
         Task {
+            defer { hostOperations -= 1 }
             do {
+                guard !closed else { throw PluginError(.sessionClosed, "Session ended.") }
+                if commandOperation != nil { try commandAuthorization() }
                 let result = try await operation()
                 guard !closed else { throw PluginError(.sessionClosed, "Session ended.") }
                 reply(["result": result], nil)
@@ -94,6 +163,13 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
                 reply(["error": ["code": failure.code.rawValue, "message": failure.message]], nil)
             }
         }
+    }
+    func waitForHostOperations() async {
+        if let task {
+            task.cancel()
+            while !task.waitUntilFinished(timeout: 0) { try? await Task.sleep(nanoseconds: 25_000_000) }
+        }
+        while hostOperations > 0 { try? await Task.sleep(nanoseconds: 25_000_000) }
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage,
@@ -110,12 +186,27 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
                 throw PluginError(.invalidArguments, "Invalid request or request exceeds 1 MiB.")
             }
             let params = body["params"] as? [String: Any] ?? [:]
+            if commandOperation != nil {
+                guard commandRuntime.isCurrent(entry) else { throw PluginError(.denied, "Command session is no longer active.") }
+                try commandAuthorization()
+                if method.hasPrefix("documents.") || ["launcher.open", "workflow.complete", "host.back"].contains(method) {
+                    throw PluginError(.denied, "Interactive host methods are unavailable in command workers.")
+                }
+                if ["clipboard.writeText", "launcher.setEntries", "tasks.run"].contains(method) { try requireCommandWrite() }
+            }
             func key() throws -> String {
                 guard let key = params["key"] as? String else { throw PluginError(.invalidArguments, "Expected a storage key.") }
                 return key
             }
             var response: Any = NSNull()
             switch method {
+            case "commands.fingerprints":
+                let values = try value(params["values"] ?? []).array ?? []
+                response = values.map(\.fingerprint)
+            case "commands.invoke":
+                guard commandOperation == nil, let operation = params["operation"] as? String else { throw PluginError(.denied, "Nested command calls are not permitted.") }
+                let input = try value(params["params"] ?? [:])
+                replyAsync(replyHandler) { try self.encoded(await self.commandRuntime.invoke(entry: self.entry, operation: operation, params: input)) }; return
             case "documents.dirty", "documents.open", "documents.read", "documents.begin", "documents.append", "documents.finish", "documents.cancel":
                 try require(.documents)
                 let token = params["token"] as? String ?? ""
@@ -142,11 +233,12 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
                 guard NSWorkspace.shared.open(try link.destination(argument: params["argument"] as? String ?? "")) else { throw PluginError(.failed, "Could not open browser.") }
             case "notifications.status":
                 try require(.notifications)
-                replyAsync(replyHandler) { await PluginServices.shared.status() }; return
+                replyAsync(replyHandler) { await self.notificationServices.status() }; return
             case "notifications.replace":
                 try require(.notifications)
+                try requireCommandWrite()
                 let reminders = try decode(params["reminders"] ?? [], as: [PluginReminder].self)
-                replyAsync(replyHandler) { try await PluginServices.shared.replace(reminders, entry: self.entry) }; return
+                replyAsync(replyHandler) { try await self.notificationServices.replace(reminders, entry: self.entry) }; return
             case "host.getInvocation": response = try encoded(invocation)
             case "workflow.context":
                 response = ["active": workflowInput != nil, "input": try encoded(workflowInput ?? .null)]
@@ -174,9 +266,16 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
                 response = try PackConfiguration.store().load(actionID: entry.id, fields: fields)
             case "storage.get": response = try encoded(dataStore.get(key()) ?? .null)
             case "storage.set":
+                try requireCommandWrite(key: key())
                 guard let raw = params["value"] else { throw PluginError(.invalidArguments, "Expected a JSON value.") }
                 try dataStore.set(key(), value: value(raw))
-            case "storage.remove": try dataStore.remove(key())
+                commandWrote = commandOperation != nil
+                NotificationCenter.default.post(name: PluginCommandRuntime.storageChanged, object: entry.action.packID)
+            case "storage.remove":
+                try requireCommandWrite(key: key())
+                try dataStore.remove(key())
+                commandWrote = commandOperation != nil
+                NotificationCenter.default.post(name: PluginCommandRuntime.storageChanged, object: entry.action.packID)
             case "clipboard.writeText":
                 try require(.writeClipboard)
                 guard let text = params["text"] as? String else { throw PluginError(.invalidArguments, "Expected text.") }
@@ -294,6 +393,17 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
         return reply.result;
       };
       let context = request('host.getInvocation');
+      let notificationHandler;
+      let commandHandlers;
+      const changeListeners = new Set();
+      window.__anywhereStorageChanged = () => changeListeners.forEach(fn => fn());
+      window.__anywhereCommand = async (operation, params) => {
+        try {
+          for (let i = 0; i < 200 && !commandHandlers; i++) await new Promise(resolve => setTimeout(resolve, 25));
+          if (!commandHandlers || typeof commandHandlers[operation] !== 'function') throw new Error('Command handler is not registered.');
+          return {value: await commandHandlers[operation](params)};
+        } catch (error) { return {error: {code: error.code || 'failed', message: error.message || String(error)}}; }
+      };
       const enterListeners = new Set();
       window.__anywhereEnter = value => { context = Promise.resolve(value); enterListeners.forEach(fn => fn(value)); };
       const documentRead = async draft => {
@@ -331,6 +441,10 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
         else channel.pending.push(event);
       };
       window.anywhere = Object.freeze({
+        commands: {register: handlers => { if (commandHandlers) throw new Error('Handlers already registered'); commandHandlers = handlers; },
+          invoke: (operation, params = {}) => request('commands.invoke', {operation, params}),
+          fingerprints: values => request('commands.fingerprints', {values}),
+          onChanged: callback => { changeListeners.add(callback); return () => changeListeners.delete(callback); }},
         onEnter: callback => { let active = true; enterListeners.add(callback); context.then(value => { if (active) callback(value); }); return () => { active = false; enterListeners.delete(callback); }; },
         getInvocation: () => context,
         documents: {open: () => documentRead(false), draft: () => documentRead(true),

@@ -50,7 +50,8 @@ final class BazaarTests: XCTestCase {
             XCTAssertThrowsError(try catalog([entry(["revision": invalid])]))
         }
         XCTAssertThrowsError(try catalog([entry(["types": ["extension"]])]))
-        XCTAssertThrowsError(try catalog([entry(["manifestSchemaVersion": 5])]))
+        XCTAssertNoThrow(try catalog([entry(["manifestSchemaVersion": PackManifest.currentSchemaVersion])]))
+        XCTAssertThrowsError(try catalog([entry(["manifestSchemaVersion": PackManifest.currentSchemaVersion + 1])]))
         XCTAssertThrowsError(try catalog([entry(["name": " "])]))
         XCTAssertThrowsError(try PackCatalog.decode(Data(repeating: 32, count: PackCatalog.byteLimit + 1)))
     }

@@ -1,6 +1,9 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "mcp.section": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Local AI access"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"本机 AI 访问"}}}},
+    "mcp.allow": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Allow access through AnyWhere MCP"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"允许通过 AnyWhere MCP 调用"}}}},
+    "mcp.operations": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Allowed operations: %@"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"开放功能：%@"}}}},
     "discover.finder": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Finder actions"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"右键菜单"}}}},
     "discover.workflow": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Workflows"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"工作流"}}}},
     "discover.tool": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Tools"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"工具"}}}},

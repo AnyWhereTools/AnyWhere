@@ -23,7 +23,7 @@ public struct PackWorkflowStep: Codable, Equatable, Sendable {
 /// - `decode` 只解析不校验;`validate()` 做语义校验(schemaVersion 不超前、name/actions 非空、
 ///   每个 action 字段合法、脚本路径限定仓库内相对路径)。
 public struct PackManifest: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 4
+    public static let currentSchemaVersion = 5
 
     public var schemaVersion: Int
     public var name: String          // 包名(显示)
@@ -38,7 +38,7 @@ public struct PackManifest: Codable, Equatable, Sendable {
     public var types: Set<PackType> {
         var result = Set<PackType>()
         if actions.contains(where: { $0.contextMenu }) { result.insert(.finder) }
-        if actions.contains(where: { $0.launcher != nil || $0.ui != nil }) { result.insert(.tool) }
+        if actions.contains(where: { $0.launcher != nil || $0.ui != nil || $0.commands != nil }) { result.insert(.tool) }
         if !workflows.isEmpty { result.insert(.workflow) }
         return result
     }
@@ -118,6 +118,8 @@ public struct PackManifest: Codable, Equatable, Sendable {
         }
 
         var seen = Set<String>()
+        var mcpNames = Set<String>()
+        var managedKeys = Set<String>()
         for action in actions {
             let id = action.id.trimmingCharacters(in: .whitespacesAndNewlines)
             if id.isEmpty { throw ValidationError.emptyActionID }
@@ -129,8 +131,20 @@ public struct PackManifest: Codable, Equatable, Sendable {
                 guard Self.isSafeRelativeScriptPath(script) else {
                     throw ValidationError.invalidScriptPath(id: id, path: script)
                 }
-            } else if action.ui == nil {
+            } else if action.ui == nil && action.commands == nil {
                 throw ValidationError.invalidScriptPath(id: id, path: "")
+            }
+            if let commands = action.commands {
+                guard schemaVersion >= 5 else { throw ValidationError.invalidUI(id: id) }
+                if action.ui == nil && action.script == nil && (action.contextMenu || action.launcher != nil) { throw ValidationError.invalidUI(id: id) }
+                try commands.validate()
+                for key in commands.storageKeys {
+                    guard managedKeys.insert(key).inserted else { throw ValidationError.invalidUI(id: id) }
+                }
+            }
+            if let mcp = action.mcp {
+                try mcp.validate(commands: action.commands)
+                guard mcpNames.insert(mcp.name).inserted else { throw ValidationError.invalidUI(id: id) }
             }
             if action.ui != nil || action.launcher != nil || !action.contextMenu || !action.capabilities.isEmpty || uiApiVersion != nil {
                 guard schemaVersion >= 4 else { throw ValidationError.invalidUI(id: id) }
@@ -140,7 +154,7 @@ public struct PackManifest: Codable, Equatable, Sendable {
                       ui.height.map({ $0 > 0 }) ?? true else { throw ValidationError.invalidUI(id: id) }
             }
             guard (uiApiVersion == nil || uiApiVersion == 1),
-                  action.contextMenu || action.launcher != nil,
+                  action.contextMenu || action.launcher != nil || action.commands != nil,
                   !action.capabilities.contains(.runTask) || action.script != nil else {
                 throw ValidationError.invalidUI(id: id)
             }
@@ -186,6 +200,8 @@ public struct PackAction: Codable, Equatable, Sendable {
     public var launcher: PackLauncher?
     public var contextMenu: Bool
     public var capabilities: [PluginCapability]
+    public var commands: PackCommands?
+    public var mcp: PackMCP?
     public var targets: TargetKind
     public var utis: [String]        // nil → []
     public var extensions: [String]
@@ -204,12 +220,13 @@ public struct PackAction: Codable, Equatable, Sendable {
                 placement: Placement = .topLevel, variants: VariantSource? = nil,
                 timeoutSeconds: Int = 60, settings: [PackSetting] = [],
                 ui: PackUI? = nil, launcher: PackLauncher? = nil, contextMenu: Bool = true,
-                capabilities: [PluginCapability] = []) {
+                capabilities: [PluginCapability] = [], commands: PackCommands? = nil, mcp: PackMCP? = nil) {
         self.id = id
         self.title = title
         self.icon = icon
         self.script = script
         self.ui = ui; self.launcher = launcher; self.contextMenu = contextMenu; self.capabilities = capabilities
+        self.commands = commands; self.mcp = mcp
         self.targets = targets
         self.utis = utis
         self.extensions = extensions
@@ -222,7 +239,7 @@ public struct PackAction: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, title, icon, script, targets, utis, extensions, filenamePattern, placement, variants, timeoutSeconds, settings
-        case ui, launcher, contextMenu, capabilities
+        case ui, launcher, contextMenu, capabilities, commands, mcp
     }
 
     public init(from decoder: Decoder) throws {
@@ -235,6 +252,8 @@ public struct PackAction: Codable, Equatable, Sendable {
         self.launcher = try c.decodeIfPresent(PackLauncher.self, forKey: .launcher)
         self.contextMenu = try c.decodeIfPresent(Bool.self, forKey: .contextMenu) ?? true
         self.capabilities = try c.decodeIfPresent([PluginCapability].self, forKey: .capabilities) ?? []
+        self.commands = try c.decodeIfPresent(PackCommands.self, forKey: .commands)
+        self.mcp = try c.decodeIfPresent(PackMCP.self, forKey: .mcp)
         self.targets = try c.decodeIfPresent(TargetKind.self, forKey: .targets) ?? .any
         self.utis = try c.decodeIfPresent([String].self, forKey: .utis) ?? []
         self.extensions = try c.decodeIfPresent([String].self, forKey: .extensions) ?? []
@@ -253,6 +272,8 @@ public struct PackAction: Codable, Equatable, Sendable {
         try c.encodeIfPresent(script, forKey: .script)
         try c.encodeIfPresent(ui, forKey: .ui)
         try c.encodeIfPresent(launcher, forKey: .launcher)
+        try c.encodeIfPresent(commands, forKey: .commands)
+        try c.encodeIfPresent(mcp, forKey: .mcp)
         if !contextMenu { try c.encode(contextMenu, forKey: .contextMenu) }
         if !capabilities.isEmpty { try c.encode(capabilities, forKey: .capabilities) }
         try c.encode(targets, forKey: .targets)

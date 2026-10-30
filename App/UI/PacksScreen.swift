@@ -371,6 +371,10 @@ struct PackRow: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
+                    if let entry = manager.commandEntries().first(where: { $0.id == action.id }), entry.definition.mcp != nil {
+                        PluginMCPSettingsView(manager: manager, entry: entry)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                    }
                 }
             }
             .background(AWColor.card)

@@ -12,7 +12,7 @@ For custom plugins, start with [Text Toolbox](examples/ui-tool-pack/README.md) a
 `xcodebuild -project AnyWhere.xcodeproj -scheme AnyWhere -destination 'platform=macOS' test`.
 Core and preset checks remain `make test` and `make test-presets`.
 
-Requirements: macOS 13+, Xcode 15+ (String Catalogs), Homebrew (for `xcodegen`).
+Requirements: macOS 13+, Xcode 16.3+ (Swift 6.1 for the MCP helper SDK), Homebrew (for `xcodegen`).
 
 ```bash
 make bootstrap   # installs xcodegen, copies Local.xcconfig from the template

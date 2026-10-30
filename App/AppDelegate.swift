@@ -9,7 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         Notifier.requestAuthorizationOnce()
         PluginServices.shared.start()
-        Task { @MainActor in AppState.shared.start() }
+        Task { @MainActor in AppState.shared.start(); PluginMCPRegistry.shared.start() }
         Task { @MainActor in PluginLauncherController.shared.start() }
 
         let onboardingDone = UserDefaults.standard.bool(forKey: "onboardingDone")
@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         PluginLauncherController.shared.stop()
         ActionRunner.cancelLauncherTasks()
+        PluginMCPRegistry.shared.stop()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

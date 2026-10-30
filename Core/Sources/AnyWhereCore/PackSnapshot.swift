@@ -27,6 +27,9 @@ public struct PackSnapshot: Sendable {
         }
         var scripts: [String: String] = [:]
         for action in manifest.actions {
+            if let commands = action.commands {
+                _ = try PluginResourceResolver.resolve(root: directory, relativePath: commands.entry)
+            }
             if let ui = action.ui {
                 do {
                     let url = try PluginResourceResolver.resolve(root: directory, relativePath: ui.entry)

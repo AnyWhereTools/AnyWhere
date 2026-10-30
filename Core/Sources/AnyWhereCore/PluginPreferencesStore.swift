@@ -18,12 +18,23 @@ public final class PluginPreferencesStore {
         var actions: [String: Set<UUID>] = [:]
         // Optional so preference files written before shortcuts still decode.
         var shortcuts: [String: PluginShortcut]?
+        var mcpApprovals: [String: String]?
     }
     private let file: PluginJSONFile<State>
     public init(directory: URL) {
         file = PluginJSONFile(directory: directory, name: "plugin-preferences.json", limit: 5 * 1024 * 1024, empty: { State() })
     }
     public func isEnabled(actionID: UUID) throws -> Bool { try file.read().enabled[actionID.uuidString] ?? false }
+    public func isMCPEnabled(actionID: UUID, approval: String?) throws -> Bool {
+        guard let approval else { return false }
+        return try file.read().mcpApprovals?[actionID.uuidString] == approval
+    }
+    public func setMCPEnabled(_ enabled: Bool, actionID: UUID, approval: String) throws {
+        try file.update { state in
+            if state.mcpApprovals == nil { state.mcpApprovals = [:] }
+            state.mcpApprovals?[actionID.uuidString] = enabled ? approval : nil
+        }
+    }
     public func setEnabled(_ enabled: Bool, actionID: UUID) throws { try file.update { $0.enabled[actionID.uuidString] = enabled } }
     public func recent() throws -> [UUID] { try file.read().recent.compactMap(UUID.init(uuidString:)) }
     public func removeShortcut(actionID: UUID) throws {
@@ -79,6 +90,7 @@ public final class PluginPreferencesStore {
             state.enabled = state.enabled.filter { !ids.contains($0.key) }
             state.recent.removeAll { ids.contains($0) }
             state.shortcuts = state.shortcuts?.filter { !ids.contains($0.key) }
+            state.mcpApprovals = state.mcpApprovals?.filter { !ids.contains($0.key) }
         }
     }
 }

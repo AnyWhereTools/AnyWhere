@@ -144,7 +144,17 @@ final class PackManager: ObservableObject {
         .sorted { $0.manifest.name.localizedCaseInsensitiveCompare($1.manifest.name) == .orderedAscending }
         updates = Self.pendingUpdates(updates, installed: packs)
         PluginLauncherController.shared.validateSession(using: self)
-        PluginServices.shared.reconcile(launcherEntries())
+        let commandEntries = commandEntries()
+        let activeCommands = commandEntries.filter { entry in
+            (entry.definition.contextMenu && entry.action.isEnabled) ||
+            (try? preferences.isEnabled(actionID: entry.id)) == true ||
+            (try? preferences.isMCPEnabled(actionID: entry.id, approval: entry.definition.mcpApproval)) == true
+        }
+        var serviceEntries = launcherEntries()
+        serviceEntries.append(contentsOf: activeCommands.filter { item in !serviceEntries.contains { $0.id == item.id } })
+        PluginServices.shared.reconcile(serviceEntries)
+        PluginCommandRuntime.shared.reconcile(activeCommands, declarations: commandEntries)
+        PluginMCPRegistry.shared.reconcile(commandEntries, preferences: preferences)
     }
 
     // MARK: - Import: step 1 — clone (NEVER executes scripts)
@@ -267,6 +277,26 @@ final class PackManager: ObservableObject {
         }
     }
 
+    func commandEntries() -> [PluginLauncherEntry] {
+        packs.flatMap { pack in
+            pack.manifest.actions.compactMap { definition in
+                guard definition.commands != nil,
+                      let action = appState().config.actions.first(where: { $0.id == Self.actionUUID(packKey: pack.key, packActionID: definition.id) }) else { return nil }
+                return PluginLauncherEntry(id: action.id, action: action, definition: definition, directory: Self.packDir(pack.key))
+            }
+        }
+    }
+
+    func setMCPEnabled(_ enabled: Bool, entry: PluginLauncherEntry) throws {
+        guard let approval = entry.definition.mcpApproval else { throw PluginError(.invalidArguments, "Plugin has no MCP declaration.") }
+        if enabled, commandEntries().contains(where: { $0.id != entry.id && $0.definition.mcp?.name == entry.definition.mcp?.name &&
+            (try? preferences.isMCPEnabled(actionID: $0.id, approval: $0.definition.mcpApproval)) == true }) {
+            throw PluginError(.invalidArguments, "MCP tool name is already registered by another plugin.")
+        }
+        try preferences.setMCPEnabled(enabled, actionID: entry.id, approval: approval)
+        reload()
+    }
+
     func shortcutEntries(includeDisabled: Bool = false) throws -> [PluginSearchEntry] {
         let installed = try preferences.searchEntries(launcherEntries(includeDisabled: includeDisabled).map {
             PluginSearchEntry(id: $0.id, title: $0.definition.title, keywords: $0.definition.launcher?.keywords ?? [])
@@ -387,6 +417,7 @@ final class PackManager: ObservableObject {
         let currentIDs = Set(appState().config.actions.filter { $0.packID == key }.map(\.id) +
             (packs.first { $0.key == key }?.manifest.workflows.map { Self.workflowUUID(packKey: key, workflowID: $0.id) } ?? []))
         guard ActionRunner.cancelLauncherTasks(actionIDs: currentIDs) else { throw PluginError(.busy, String(localized: "plugins.taskStopFailed")) }
+        PluginCommandRuntime.shared.invalidate(pack: key)
         try preferences.rememberActions(packKey: key, ids: currentIDs)
         if clearData {
             for id in try preferences.knownActions(packKey: key) { try PackConfiguration.store().remove(actionID: id) }
@@ -396,7 +427,10 @@ final class PackManager: ObservableObject {
         }
         // Keep known IDs when retaining data, so a later uninstall can clear removed actions too.
         if clearData { try preferences.removePack(packKey: key) }
-        else { for id in currentIDs { try preferences.setEnabled(false, actionID: id) } }
+        else { for id in currentIDs {
+            try preferences.setEnabled(false, actionID: id)
+            try preferences.setMCPEnabled(false, actionID: id, approval: "")
+        } }
         var config = appState().config
         config.actions.removeAll { $0.packID == key }
         appState().update(config)
@@ -548,6 +582,7 @@ final class PackManager: ObservableObject {
         }
 
         // Swap working tree.
+        PluginCommandRuntime.shared.invalidate(pack: key)
         try fm.createDirectory(at: Self.packsRoot, withIntermediateDirectories: true)
         let backup = Self.packsRoot.appendingPathComponent(".backup-\(UUID())")
         try fm.moveItem(at: dest, to: backup)

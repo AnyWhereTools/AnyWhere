@@ -17,6 +17,19 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     # 签名由 Local.xcconfig 控制（默认 ad-hoc；正式分发用 Developer ID）
 targets:
+  AnyWhereMCP:
+    type: tool
+    platform: macOS
+    sources: [MCPBridge]
+    dependencies:
+      - package: AnyWhereCore
+      - package: ModelContextProtocol
+        product: MCP
+    settings:
+      base:
+        PRODUCT_NAME: anywhere-mcp
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
   AnyWhereTests:
     type: bundle.unit-test
     platform: macOS
@@ -39,6 +52,8 @@ targets:
     dependencies:
       - package: AnyWhereCore
       - package: Sparkle
+      - target: AnyWhereMCP
+        embed: false
       - target: FinderExtension
         embed: true
     info:
@@ -61,6 +76,12 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.anywhere.app
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    postBuildScripts:
+      - name: Embed local MCP helper
+        script: |
+          cp "${BUILT_PRODUCTS_DIR}/anywhere-mcp" "${TARGET_BUILD_DIR}/${EXECUTABLE_FOLDER_PATH}/anywhere-mcp"
+        inputFiles: ["$(BUILT_PRODUCTS_DIR)/anywhere-mcp"]
+        outputFiles: ["$(TARGET_BUILD_DIR)/$(EXECUTABLE_FOLDER_PATH)/anywhere-mcp"]
   FinderExtension:
     type: app-extension
     platform: macOS
@@ -84,6 +105,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.anywhere.app.FinderExtension
 packages:
+  ModelContextProtocol:
+    url: https://github.com/modelcontextprotocol/swift-sdk
+    exactVersion: "0.12.1"
   AnyWhereCore:
     path: Core
   Sparkle:

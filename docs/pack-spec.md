@@ -72,8 +72,9 @@ defaults above.
 | `2` | Version 1 plus `settings` for plugin configuration |
 | `3` | Version 2 plus `extensions` and `filenamePattern` |
 | `4` | Version 3 plus custom UI, launcher entries, independent switches and page capabilities |
+| `5` | Version 4 plus serialized plugin commands and declarative local MCP exports; see [MCP](mcp.zh.md) |
 
-The current version is **4**. An omitted version defaults to **1**. Declare the version needed
+The current version is **5**. An omitted version defaults to **1**. Declare the version needed
 by your pack so older clients reject unsupported features. Combining settings with suffix or
 regex filters requires at least **3**; existing version 1–3 packs remain supported.
 
