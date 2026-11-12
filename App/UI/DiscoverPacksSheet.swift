@@ -105,7 +105,7 @@ struct DiscoverPacksSheet: View {
     private func row(_ pack: CatalogPack) -> some View {
         let installed = packManager.packs.first { !$0.isLocal && PackCatalog.repositoryIdentity($0.repoURL) == PackCatalog.repositoryIdentity(pack.repository) }
         return HStack(spacing: 11) {
-            AppIcon(pack.icon, size: 30, hue: .teal)
+            PluginIconView(icon: pack.icon, remoteURL: pack.iconURL, size: 30)
             VStack(alignment: .leading, spacing: 1) {
                 Text(pack.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(AWColor.label)
                 if let d = pack.description, !d.isEmpty {

@@ -19,7 +19,7 @@ struct SettingsWindow: View {
             .background(.regularMaterial)
             Divider()
             VStack(alignment: .leading, spacing: 0) {
-                if state.settingsTab != .shortcuts && state.settingsTab != .contextMenu {
+                if state.settingsTab == .general {
                     Text(state.settingsTab.title)
                         .font(.system(size: 22, weight: .semibold))
                         .padding(.horizontal, 24).padding(.vertical, 20)

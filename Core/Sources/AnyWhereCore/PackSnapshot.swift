@@ -22,6 +22,9 @@ public struct PackSnapshot: Sendable {
         do {
             manifest = try PackManifest.decode(data)
             try manifest.validate()
+            for icon in Set([manifest.icon] + manifest.actions.map(\.icon)) {
+                _ = try PackIcon.pngData(icon, in: directory)
+            }
         } catch {
             throw ReadError.invalidManifest("\(error)")
         }

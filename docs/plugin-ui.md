@@ -1,6 +1,6 @@
 # Plugin Search and Custom UI
 
-[简体中文](plugin-ui.zh.md) · [Home](../README.md) · [Pack specification](pack-spec.md)
+[简体中文](plugin-ui.zh.md) · [Developer docs](README.md) · [Pack specification](pack-spec.md)
 
 Plugins own local HTML/CSS/JavaScript pages displayed in AnyWhere's tool panel or a regular independent window. JSON declares entries and capabilities; it does not describe the layout. The page runs browser JavaScript, without a bundled Node/Deno runtime. Reviewed scripts can launch Go/Rust binaries for networking and file processing.
 
@@ -29,9 +29,11 @@ Plugins own local HTML/CSS/JavaScript pages displayed in AnyWhere's tool panel o
 
 Imports start with both entries disabled. Enable **Context Menu** and **Search** independently in the pack details; configuration forms also work for search-only actions. General settings record or disable the global shortcut, initially `Control+Option+Space`. Registration failure preserves the previous shortcut. The menu bar also offers Open Plugin Search.
 
-Search includes enabled tools, custom shortcut actions and same-pack workflows, followed by matching installed applications. It ignores case and supports names, full pinyin and pinyin initials. Tool/action/workflow titles rank before aliases, then pack descriptions (or pack names when no description exists); within each group, literal exact/prefix/substring matches precede transliterated matches. A literal title or alias followed by whitespace extracts the remaining argument, preferring the longest matching prefix; pinyin matching alone does not extract arguments. Arrow keys select; Return opens, without interrupting IME composition. Empty queries show recent entries only and an empty-state hint when none exist. Queries and arguments are not saved in history.
+Search includes enabled tools, custom shortcut actions and same-pack workflows, followed by matching installed applications. It ignores case and supports names, full pinyin and pinyin initials. Tool/action/workflow titles rank before aliases, then pack descriptions (or pack names when no description exists); within each group, literal exact/prefix/substring matches precede transliterated matches. A literal title or alias followed by whitespace extracts the remaining argument, preferring the longest matching prefix; pinyin matching alone does not extract arguments. Arrow keys select; Return opens, without interrupting IME composition. Empty queries show the three most recent entries (or an empty-state hint), followed by user-pinned plugin summaries. Queries and arguments are not saved in history.
 
-In **Shortcuts**, create an editable local script action, set its name and keywords, enable it, and optionally record a global hotkey. New custom actions start disabled and are separate from Finder context-menu actions. Pack shortcuts allow a local display name, keyword aliases and enablement; their implementation remains in the pack. Workflow enablement and Run are in pack details; workflows currently have no manifest keyword or per-workflow hotkey field.
+Add an optional root `summary.html` to support pinned summaries without changing the manifest. The host supplies default styling, light/dark themes and read-only storage. See the [summary guide (Chinese)](plugin-summaries.zh.md).
+
+**Shortcuts** manages only user-created actions. Use keywords, a global hotkey, or both. New actions start disabled and are separate from Finder context-menu actions. Hotkeys execute directly; failures use notifications and the execution log without opening the launcher. **Extension Packs** lists installed plugins by default, with **Install New Plugin** opening discovery. Each plugin's **Settings** contains its display name, keywords, enablement, feature configuration and hotkey. Plugin hotkeys open or activate a standalone window; actions without a UI execute directly. Workflow enablement and Run remain in pack details; workflows currently have no manifest keyword or per-workflow hotkey field.
 
 ### Tool panel and independent windows
 
@@ -55,8 +57,8 @@ await anywhere.clipboard.writeText('Hello');
 
 | API | Contract |
 |---|---|
-| `onEnter(callback)` | Delivers context once after readiness, including late subscribers; returns unsubscribe |
-| `getInvocation()` | Promise of the same context object |
+| `onEnter(callback)` | Delivers context on initial entry and reactivation; late subscribers receive current context; returns unsubscribe |
+| `getInvocation()` | Promise of the latest invocation context; use `onEnter` to keep receiving new invocations such as notification clicks |
 | `workflow.context()` | Promise of `{active, input}`; standalone pages return `{active: false, input: null}` |
 | `workflow.complete(output)` | Submit one JSON result from the current interactive workflow step; host chooses the next step |
 | `config.get()` | Promise of current action's ordinary configuration, with string values; excludes passwords |
@@ -64,8 +66,10 @@ await anywhere.clipboard.writeText('Hello');
 | `storage.set(key, value)` / `remove(key)` | Promise; writes/deletes pack-scoped JSON |
 | `clipboard.writeText(text)` | Promise; requires `clipboard.write` |
 | `tasks.run(input)` | Promise of task handle; requires `task.run` and this action's `script` |
+| `documents.*` / `launcher.*` | File and dynamic-search services; require `documents` / `launcher.entries`; see [host services](plugin-services.md) |
+| `notifications.status()` / `replace(reminders)` | Permission status and full replacement of reminders with buttons; requires `notifications`; see [notification guide](plugin-notifications.md) |
 
-Context fields: `apiVersion`, `invocationID`, `actionID`, `source` (`launcher` / `finder`), `query`, `argument`, `paths`, `finderPath`, optional `variant`. `actionID` is the installed action UUID, not the manifest's local action ID. Launcher paths are empty; Finder query and argument are empty. `finderPath` is the captured Finder directory, falling back to the user's home directory, also available to scripts as `ANYWHERE_FINDER_PATH`. Context is immutable per invocation.
+Context fields: `apiVersion`, `invocationID`, `actionID`, `source` (`launcher` / `finder`), `query`, `argument`, `paths`, `finderPath`, optional `variant` and `notification`. `notification` is a button event `{id,itemID,actionID}`; see [handling and deduplication](plugin-notifications.md#4-handle-button-events). The top-level `actionID` is the installed action UUID, not the manifest's local action ID; the event's `actionID` is the plugin-declared button ID. Launcher paths are empty; Finder query and argument are empty. `finderPath` is the captured Finder directory, falling back to the user's home directory, also available to scripts as `ANYWHERE_FINDER_PATH`. Context is immutable per invocation; reactivation delivers a new context.
 
 The host binds requests to the original main page, session and installed plugin. Failed promises include `message` and a stable `code`: `invalidArguments`, `denied`, `sessionClosed`, `busy`, `failed`, `timedOut`, `cancelled`, `outputLimit`, `storageLimit`. Messages and responses are limited to 1 MiB. Discard handles after the session ends.
 

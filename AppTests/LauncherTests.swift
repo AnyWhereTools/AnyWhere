@@ -44,6 +44,11 @@ final class LauncherCatalogTests: XCTestCase {
         let recent = try PluginPreferencesStore(directory: root).recent()
         XCTAssertEqual(catalog.search("", recent: recent).map(\.entry.id), [title.id, alias.id])
         XCTAssertEqual(LauncherCatalog(entries: [alias]).search("", recent: recent).map(\.entry.id), [alias.id])
+        let many = (0..<8).map { entry("Tool \($0)") }
+        let manyCatalog = LauncherCatalog(entries: many)
+        let history = [UUID()] + many.reversed().map(\.id)
+        XCTAssertEqual(manyCatalog.search("", recent: history).map(\.entry.id), Array(many.reversed().prefix(4).map(\.id)))
+        XCTAssertEqual(manyCatalog.search("Tool", recent: history).count, 8)
         XCTAssertNotEqual(PackManager.workflowUUID(packKey: "p", workflowID: "a"), PackManager.actionUUID(packKey: "p", packActionID: "a"))
     }
 }
@@ -91,6 +96,37 @@ final class LauncherPanelTests: XCTestCase {
 
         settings.makeKey()
         XCTAssertFalse(panel.isVisible)
+    }
+
+    func testToolPageHidesWithoutClosingAndResetsAfterTimeout() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "<html><body><input value='keep'></body></html>".write(to: root.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)
+        let manifest = try PackManifest.decode(Data(#"{"schemaVersion":4,"uiApiVersion":1,"name":"Test","actions":[{"id":"ui","title":"UI","ui":{"entry":"index.html"},"launcher":{}}]}"#.utf8))
+        let id = UUID()
+        let action = MenuAction(id: id, title: "UI", icon: .symbol("bolt"), kind: .openPluginUI,
+                                matching: MatchRule(), placement: .topLevel, packID: "launcher-resign-test", isEnabled: true, sortOrder: 0)
+        let entry = PluginLauncherEntry(id: id, action: action, definition: manifest.actions[0], directory: root)
+        let session = PluginSession(entry: entry, invocation: .init(actionID: id, source: .launcher))
+        let controller = PluginLauncherController()
+        controller.session = session
+        controller.inactivityResetInterval = 0.05
+        defer { controller.hide(); try? FileManager.default.removeItem(at: PackManager.dataDirectory(action.packID!)) }
+
+        controller.show()
+        let panel = try XCTUnwrap(NSApp.windows.first { $0.delegate === controller })
+        controller.windowDidResignKey(Notification(name: NSWindow.didResignKeyNotification, object: panel))
+        XCTAssertFalse(panel.isVisible)
+        XCTAssertTrue(controller.session === session)
+
+        controller.show()
+        XCTAssertTrue(panel.isVisible)
+        XCTAssertTrue(controller.session === session)
+        controller.windowDidResignKey(Notification(name: NSWindow.didResignKeyNotification, object: panel))
+        for _ in 0..<20 where controller.session != nil { try await Task.sleep(nanoseconds: 20_000_000) }
+        XCTAssertNil(controller.session)
+        XCTAssertEqual(controller.panelState, .search)
     }
 }
 
@@ -140,9 +176,31 @@ final class ToolWorkspaceTests: XCTestCase {
         let invocation = PluginInvocation(actionID: first.id, source: .launcher, query: "UI hello")
         let workspace = ToolWorkspaceController()
         defer { workspace.close() }
+        NSApp.deactivate()
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let frontmostPID = try XCTUnwrap(NSWorkspace.shared.frontmostApplication?.processIdentifier)
+        XCTAssertNotEqual(frontmostPID, ProcessInfo.processInfo.processIdentifier)
         let a = workspace.open(first, invocation: invocation), b = workspace.open(second, invocation: invocation)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(NSWorkspace.shared.frontmostApplication?.processIdentifier, frontmostPID,
+                       "Opening a tool must not activate the entire application")
+        XCTAssertTrue(try XCTUnwrap(b.window).isKeyWindow)
+        func assertFrontmost(_ window: NSWindow, file: StaticString = #filePath, line: UInt = #line) {
+            let visible = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+            let normal = visible.filter { ($0[kCGWindowLayer as String] as? Int) == 0 }
+            XCTAssertEqual(normal.first?[kCGWindowNumber as String] as? Int, window.windowNumber,
+                           "The tool must be in front of other normal windows, not just key", file: file, line: line)
+        }
+        assertFrontmost(try XCTUnwrap(b.window))
+        a.window?.orderBack(nil)
+        a.activate(invocation: invocation)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(NSWorkspace.shared.frontmostApplication?.processIdentifier, frontmostPID,
+                       "Reusing a tool must not activate the entire application")
         let window = try XCTUnwrap(a.window)
-        XCTAssertFalse(window is NSPanel)
+        XCTAssertTrue(window.isKeyWindow)
+        assertFrontmost(window)
+        XCTAssertTrue(window.styleMask.contains(.nonactivatingPanel))
         XCTAssertEqual(window.level, .normal)
         XCTAssertFalse(window.hidesOnDeactivate)
         XCTAssertEqual(window.toolbarStyle, .unifiedCompact)
@@ -183,6 +241,10 @@ final class ToolWorkspaceTests: XCTestCase {
         XCTAssertNotEqual(reopened.session.id, a.session.id)
         panel.hide(); XCTAssertNil(panel.session); XCTAssertEqual(panel.query, "")
         panel.session = PluginSession(entry: first, invocation: invocation)
+        panel.show()
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(NSWorkspace.shared.frontmostApplication?.processIdentifier, frontmostPID,
+                       "Opening an embedded tool must not activate the entire application")
         let embedded = try XCTUnwrap(panel.session)
         panel.detachTool()
         defer { _ = ToolWorkspaceController.shared.close(packKey: "window-test") }

@@ -19,6 +19,7 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
     @Published var query = ""
     @Published var selectedID: String?
     @Published private(set) var focusRequest = UUID()
+    @Published private(set) var isVisible = false
     @Published var session: PluginSession?
     @Published private(set) var workflow: LauncherWorkflowEntry?
     @Published private(set) var workflowRunning = false
@@ -29,11 +30,14 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
     private var workflowInvocation: PluginInvocation?
     private var executionID = UUID()
     private var retryAction: (() -> Void)?
+    private var resetTimer: Timer?
+    var inactivityResetInterval: TimeInterval = 180
     enum PanelState { case search, tool, workflowResult }
     var panelState: PanelState { session != nil ? .tool : workflow != nil ? .workflowResult : .search }
     @Published var error: String?
     @Published private(set) var shortcutLabel = "⌃⌥Space"
     private var resultCount = 0
+    private var summaryCount = 0
     fileprivate var finderPath = FileManager.default.homeDirectoryForCurrentUser.path
 
     func start() {
@@ -49,7 +53,7 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
                 let controller = PluginLauncherController.shared
                 if eventID == 1 { controller.toggle() }
                 else if let id = controller.actionHotKeys.first(where: { $0.value.eventID == eventID })?.key {
-                    controller.runUserAction(id)
+                    controller.runHotKeyAction(id)
                 }
             }
             return noErr
@@ -63,6 +67,9 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
     }
     func setShortcut(key: UInt32, modifiers: UInt32, label: String) {
         let prefs = UserDefaults.standard
+        guard !AppState.shared.config.actions.contains(where: { $0.shortcutHotKey?.key == key && $0.shortcutHotKey?.modifiers == modifiers }) else {
+            error = String(localized: "plugins.shortcutConflict"); return
+        }
         if hotKey != nil, prefs.object(forKey: "pluginShortcutKey") as? UInt32 == key,
            prefs.object(forKey: "pluginShortcutModifiers") as? UInt32 == modifiers { return }
         var candidate: EventHotKeyRef?
@@ -78,6 +85,7 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
         UserDefaults.standard.set(true, forKey: "pluginShortcutDisabled"); objectWillChange.send()
     }
     func stop() {
+        resetTimer?.invalidate(); resetTimer = nil
         _ = ToolWorkspaceController.shared.close()
         back()
         if let hotKey { UnregisterEventHotKey(hotKey) }; hotKey = nil
@@ -87,24 +95,39 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
     }
 
     func runUserAction(_ id: UUID, query: String = "", argument: String = "") {
-        guard let action = AppState.shared.config.actions.first(where: { $0.id == id && $0.shortcutOnly == true && $0.isEnabled }) else { return }
+        guard let action = AppState.shared.config.actions.first(where: { $0.id == id && $0.packID == nil && $0.shortcutOnly == true && $0.isEnabled }) else { return }
         if window?.isKeyWindow != true { finderPath = FinderDirectory.currentPath() }
         try? AppState.shared.packManager.preferences.recordUse(actionID: id)
-        retryAction = { [weak self] in self?.runUserAction(id, query: query, argument: argument) }
-        let token = UUID(); executionID = token; error = nil
+        if panelState == .search { hide() }
         ActionRunner().run(action: action, variant: nil, urls: [], invocation: PluginInvocation(
-            actionID: id, source: .launcher, query: query, argument: argument, finderPath: finderPath)) { [weak self] outcome in
-                guard let self, self.executionID == token else { return }
-                if case .failure(let message) = outcome { self.error = message; self.show() }
-            }
+            actionID: id, source: .launcher, query: query, argument: argument, finderPath: finderPath))
+    }
+
+    var hotKeyActions: [MenuAction] {
+        let state = AppState.shared
+        let plugins = Set(state.packManager.launcherEntries().map(\.id))
+        return state.config.actions.filter {
+            $0.shortcutHotKey != nil && ($0.packID == nil ? $0.shortcutOnly == true && $0.isEnabled : plugins.contains($0.id))
+        }
+    }
+
+    func runHotKeyAction(_ id: UUID) {
+        guard let action = hotKeyActions.first(where: { $0.id == id }) else { return }
+        if action.packID == nil { runUserAction(id) }
+        else if let entry = AppState.shared.packManager.launcherEntry(actionID: id) {
+            open(entry, invocation: PluginInvocation(actionID: id, source: .launcher, finderPath: FinderDirectory.currentPath()), detached: true)
+        }
     }
 
     func setActionHotKey(_ binding: ActionHotKey?, actionID: UUID) throws {
+        guard AppState.shared.config.actions.contains(where: { $0.id == actionID }) else {
+            throw PluginError(.failed, String(localized: "shortcuts.select"))
+        }
         if let binding {
             let prefs = UserDefaults.standard
             let globalKey = prefs.object(forKey: "pluginShortcutKey") as? UInt32 ?? 49
             let globalModifiers = prefs.object(forKey: "pluginShortcutModifiers") as? UInt32 ?? UInt32(controlKey | optionKey)
-            guard !(binding.key == globalKey && binding.modifiers == globalModifiers),
+            guard !(!prefs.bool(forKey: "pluginShortcutDisabled") && binding.key == globalKey && binding.modifiers == globalModifiers),
                   !AppState.shared.config.actions.contains(where: {
                       $0.id != actionID && $0.shortcutHotKey?.key == binding.key && $0.shortcutHotKey?.modifiers == binding.modifiers
                   }) else { throw PluginError(.failed, String(localized: "plugins.shortcutConflict")) }
@@ -131,7 +154,7 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
 
     func reloadActionHotKeys() {
         guard eventHandler != nil else { return }
-        let actions = AppState.shared.config.actions.filter { $0.shortcutOnly == true && $0.isEnabled && $0.shortcutHotKey != nil }
+        let actions = hotKeyActions
         for id in Array(actionHotKeys.keys) where !actions.contains(where: { $0.id == id }) {
             if let old = actionHotKeys.removeValue(forKey: id) { UnregisterEventHotKey(old.reference) }
         }
@@ -141,17 +164,20 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
         }
     }
     func hide() {
+        resetTimer?.invalidate(); resetTimer = nil
         back()
         guard panelState == .search else { return }
         window?.orderOut(nil)
+        isVisible = false
         query = ""
         selectedID = nil
     }
     func toggle() { if window?.isVisible == true { hide() } else { show() } }
     func show() {
+        resetTimer?.invalidate(); resetTimer = nil
         if window?.isKeyWindow != true { finderPath = FinderDirectory.currentPath() }
         if window == nil {
-            let w = LauncherPanel(contentRect: NSRect(x: 0, y: 0, width: 680, height: 74),
+            let w = LauncherPanel(contentRect: NSRect(x: 0, y: 0, width: 680, height: 60),
                                   styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
             w.title = String(localized: "plugins.title")
             w.identifier = NSUserInterfaceItemIdentifier("AnyWhere.launcher")
@@ -171,15 +197,20 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
         }
         updateLayout(resultCount: resultCount)
         focusRequest = UUID()
-        // 搜索只获取键盘焦点，避免把后台的设置等窗口一起带到前台。
-        if panelState != .search { NSApp.activate(ignoringOtherApps: true) }
+        // 搜索和内嵌工具只获取键盘焦点，避免把后台的设置等窗口一起带到前台。
+        isVisible = true
         window?.makeKeyAndOrderFront(nil)
     }
-    func updateLayout(resultCount: Int) {
+    func updateLayout(resultCount: Int, summaryCount: Int? = nil) {
         self.resultCount = resultCount
+        if let summaryCount { self.summaryCount = summaryCount }
         guard let window else { return }
         let area = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? window.frame
-        let searchHeight: CGFloat = 74 + CGFloat(max(1, min(resultCount, 7))) * 64 + 66
+        let summaries = query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? self.summaryCount : 0
+        let summaryHeight: CGFloat = summaries == 0 ? 0 : 28 + CGFloat(min(summaries, 3)) * PluginSummaryHost.rowHeight
+        // Four compact recent rows share the original three-row panel height.
+        let visibleRows = query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 3 : 5
+        let searchHeight: CGFloat = 60 + CGFloat(max(1, min(resultCount, visibleRows))) * 64 + 66 + summaryHeight
         let height = min(CGFloat(session?.entry.definition.ui?.height ?? 460) + 56, area.height - 40)
         let size = NSSize(width: min(panelState == .search ? 680 : max(680, window.frame.width), area.width - 40),
                           height: min((panelState == .search ? searchHeight : height) + (error == nil ? 0 : 60), area.height - 40))
@@ -193,8 +224,16 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool { hide(); return false }
     func windowDidResignKey(_ notification: Notification) {
-        // 非激活面板按失焦收起，不能依赖应用是否在前台；插件会话仍保持可见。
-        if panelState == .search { window?.orderOut(nil) }
+        guard isVisible else { return }
+        // 非激活面板按失焦收起；插件页面保留会话，按 uTools 的 3 分钟计时退出。
+        isVisible = false
+        window?.orderOut(nil)
+        let delay = panelState == .search ? 0.5 : inactivityResetInterval
+        resetTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            guard let self, !self.isVisible else { return }
+            self.resetTimer = nil
+            self.hide()
+        }
     }
     func back() {
         guard session?.close(waitForTask: true) ?? true, endWorkflow() else {
@@ -226,7 +265,7 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
         alert.addButton(withTitle: String(localized: "plugins.switch"))
         return alert.runModal() == .alertSecondButtonReturn
     }
-    func open(_ entry: PluginLauncherEntry, invocation: PluginInvocation? = nil) {
+    func open(_ entry: PluginLauncherEntry, invocation: PluginInvocation? = nil, detached: Bool = false) {
         let context = invocation ?? PluginInvocation(actionID: entry.id, source: .launcher, query: query, finderPath: finderPath)
         let manager = AppState.shared.packManager
         guard let current = manager.launcherEntry(actionID: entry.id), current.definition == entry.definition else { return }
@@ -235,6 +274,18 @@ final class PluginLauncherController: NSObject, ObservableObject, NSWindowDelega
         guard enabled else { return }
         if let detached = ToolWorkspaceController.shared.windows[entry.id] {
             detached.activate(invocation: context); return
+        }
+        if detached {
+            try? manager.preferences.recordUse(actionID: entry.id)
+            if entry.definition.ui == nil {
+                ActionRunner().runLauncher(entry: current, invocation: context)
+            } else if session?.entry.id == entry.id {
+                session?.activate(context)
+                detachTool()
+            } else {
+                ToolWorkspaceController.shared.open(current, invocation: context)
+            }
+            return
         }
         if session?.entry.id == entry.id { session?.activate(context); show(); return }
         if (session != nil || workflowRunning) && !confirmSwitch() { return }
@@ -381,9 +432,12 @@ struct PluginLauncherView: View {
     @ObservedObject var controller: PluginLauncherController
     @ObservedObject var manager: PackManager
     @State private var catalog = LauncherCatalog()
-    @State private var recent: [UUID] = []
+    @State private var recent: [String] = []
     @State private var apps: [ApplicationSearchEntry] = []
     @State private var loadingApps = false
+    @State private var hoveredID: String?
+    @State private var summaries: [PluginLauncherEntry] = []
+    @State private var summaryRevision = UUID()
 
     private enum Result: Identifiable {
         case plugin(LauncherCatalog.Match), application(ApplicationSearchEntry)
@@ -401,8 +455,12 @@ struct PluginLauncherView: View {
         }
     }
     private var results: [Result] {
-        let plugins = catalog.search(controller.query, recent: recent)
-        return plugins.map(Result.plugin) + (hasQuery ? ApplicationSearch.matches(query: controller.query, apps: apps).map(Result.application) : [])
+        let plugins = catalog.search(controller.query, recent: recent.compactMap(UUID.init(uuidString:))).map(Result.plugin)
+        if hasQuery {
+            return plugins + ApplicationSearch.matches(query: controller.query, apps: apps).map(Result.application)
+        }
+        let available = plugins + apps.map(Result.application)
+        return Array(recent.compactMap { id in available.first { $0.id == id } }.prefix(4))
     }
     private var hasQuery: Bool { !controller.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
@@ -431,7 +489,12 @@ struct PluginLauncherView: View {
             NSWorkspace.shared.openApplication(at: app.url, configuration: .init()) { _, error in
                 Task { @MainActor in
                     if let error { controller.error = error.localizedDescription; controller.show() }
-                    else { controller.query = "" }
+                    else {
+                        do {
+                            try manager.preferences.recordUse(applicationURL: app.url)
+                            controller.query = ""
+                        } catch { controller.error = error.localizedDescription; controller.show() }
+                    }
                 }
             }
         }
@@ -489,17 +552,17 @@ struct PluginLauncherView: View {
                                   onClose: controller.hide, onDetach: controller.detachTool)
             } else {
                 HStack(spacing: 16) {
-                    Image(systemName: "magnifyingglass").font(.system(size: 26, weight: .regular)).foregroundStyle(.secondary)
+                    Image(systemName: "magnifyingglass").font(.system(size: 22, weight: .regular)).foregroundStyle(.secondary)
                     PluginSearchField(text: $controller.query, focusRequest: controller.focusRequest,
                                       onSubmit: { launch(controller.selectedID) }, onMove: move,
                                       onEscape: { controller.hide() })
-                        .frame(height: 34)
+                        .frame(height: 30)
                     if !controller.query.isEmpty {
                         Button { controller.query = "" } label: {
                             Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
                         }.buttonStyle(.plain).accessibilityLabel(String(localized: "launcher.clear"))
                     }
-                }.padding(.horizontal, 24).frame(height: 74)
+                }.padding(.horizontal, 24).frame(height: 60)
                 Group {
                     Divider().padding(.horizontal, 20)
                     HStack {
@@ -521,6 +584,34 @@ struct PluginLauncherView: View {
                             .onChange(of: controller.selectedID) { id in
                                 if let id { proxy.scrollTo(id) }
                             }
+                        }
+                    }
+                    if !hasQuery, !summaries.isEmpty {
+                        VStack(spacing: 0) {
+                            Divider().padding(.horizontal, 20)
+                            HStack { Text("固定摘要"); Spacer() }
+                                .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 24).frame(height: 27)
+                            ScrollView {
+                                if controller.isVisible {
+                                    PluginSummaryView(entries: summaries, revision: summaryRevision, isAllowed: { entry in
+                                        manager.summaryEntries().contains { $0.id == entry.id }
+                                    })
+                                    .frame(height: CGFloat(summaries.count) * PluginSummaryHost.rowHeight)
+                                    .overlay {
+                                        VStack(spacing: 0) {
+                                            ForEach(summaries) { entry in
+                                                Color.clear.contentShape(Rectangle())
+                                                    .frame(height: PluginSummaryHost.rowHeight)
+                                                    .onTapGesture { controller.open(entry) }
+                                                    .contextMenu { Button("取消固定") { pin(false, entry: entry) } }
+                                                    .accessibilityLabel("打开\(entry.definition.title)")
+                                                    .accessibilityAddTraits(.isButton)
+                                            }
+                                        }
+                                    }
+                                }
+                            }.frame(height: CGFloat(min(summaries.count, 3)) * PluginSummaryHost.rowHeight)
+                                .padding(.horizontal, 10)
                         }
                     }
                     HStack {
@@ -558,10 +649,13 @@ struct PluginLauncherView: View {
         .onChange(of: controller.error) { _ in controller.updateLayout(resultCount: results.count) }
         .onReceive(manager.$packs) { _ in DispatchQueue.main.async { reloadEntries() } }
         .onReceive(NotificationCenter.default.publisher(for: PluginServices.changed)) { _ in reloadEntries() }
+        .onReceive(NotificationCenter.default.publisher(for: PluginSummaryHost.storageChanged)) { event in
+            if summaries.contains(where: { $0.action.packID == event.object as? String }) { summaryRevision = UUID() }
+        }
         .onReceive(AppState.shared.$config) { _ in DispatchQueue.main.async { reloadEntries() } }
         .task(id: controller.focusRequest) {
             reloadEntries()
-            guard controller.panelState == .search else { return }
+            guard controller.panelState == .search, controller.isVisible else { return }
             loadingApps = true
             let discovered = await Task.detached(priority: .utility) {
                 ApplicationSearch.discover(in: ApplicationSearch.directories)
@@ -572,18 +666,19 @@ struct PluginLauncherView: View {
     }
 
     private func resultRow(_ result: Result) -> some View {
-        Button { launch(result.id) } label: {
-            HStack(spacing: 14) {
+        let iconSize: CGFloat = hasQuery ? 38 : 24
+        return Button { launch(result.id) } label: {
+            HStack(spacing: hasQuery ? 14 : 10) {
                 switch result {
                 case .plugin(let match):
                     ActionIconView(icon: match.entry.icon,
-                                   hue: match.entry.iconHue.flatMap(AppIconHue.init(rawValue:)) ?? .gray, size: 38)
+                                   hue: match.entry.iconHue.flatMap(AppIconHue.init(rawValue:)) ?? .gray, size: iconSize)
                 case .application(let app):
-                    Image(nsImage: NSWorkspace.shared.icon(forFile: app.url.path)).resizable().frame(width: 38, height: 38)
+                    Image(nsImage: NSWorkspace.shared.icon(forFile: app.url.path)).resizable().frame(width: iconSize, height: iconSize)
                 }
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(result.title).font(.system(size: 18, weight: .medium)).lineLimit(1)
-                    if case .plugin(let match) = result {
+                    Text(result.title).font(.system(size: hasQuery ? 18 : 14, weight: hasQuery ? .medium : .regular)).lineLimit(1)
+                    if hasQuery, case .plugin(let match) = result {
                         Text(match.argument.isEmpty ? match.entry.subtitle : match.argument)
                             .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
@@ -591,24 +686,42 @@ struct PluginLauncherView: View {
                 Spacer()
                 if case .plugin(let match) = result {
                     Text(match.entry.kind).font(.caption).foregroundStyle(.secondary)
+                } else if !hasQuery {
+                    Text(String(localized: "panel.typeApplication")).font(.caption).foregroundStyle(.secondary)
                 }
-                if result.id == controller.selectedID {
+                if hasQuery, result.id == controller.selectedID {
                     Text(String(localized: "launcher.open")).font(.caption).foregroundStyle(.secondary)
                     Text("↵").font(.system(size: 15)).padding(.horizontal, 7).padding(.vertical, 3)
                         .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
                 }
             }
-            .padding(.horizontal, 14).frame(height: 64)
-            .background(result.id == controller.selectedID ? Color.primary.opacity(0.08) : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 15))
+            .padding(.horizontal, hasQuery ? 14 : 12).frame(height: hasQuery ? 64 : 48)
+            .background(Color.primary.opacity(result.id == controller.selectedID ? 0.08 : hoveredID == result.id ? 0.04 : 0),
+                        in: RoundedRectangle(cornerRadius: hasQuery ? 15 : 8))
             .contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel(result.title)
+            .onHover { hoveredID = $0 ? result.id : nil }
+            .contextMenu {
+                if case .plugin(let match) = result, case .plugin(let entry) = match.entry.target,
+                   manager.summaryEntries().contains(where: { $0.action.packID == entry.action.packID }) {
+                    let pinned = summaries.contains { $0.action.packID == entry.action.packID }
+                    Button(pinned ? "取消固定" : "固定到搜索首页") { pin(!pinned, entry: entry) }
+                }
+            }
+    }
+
+    private func pin(_ pinned: Bool, entry: PluginLauncherEntry) {
+        do { try manager.setSummaryPinned(pinned, entry: entry); reloadEntries() }
+        catch { controller.error = error.localizedDescription }
     }
 
     private func reloadEntries() {
         do {
             catalog = try manager.launcherCatalog()
-            recent = try manager.preferences.recent()
+            recent = try manager.preferences.recentIDs()
+            let available = manager.summaryEntries()
+            summaries = try manager.preferences.pinnedSummaries().compactMap { key in available.first { $0.action.packID == key } }
+            summaryRevision = UUID()
             updateResults()
         } catch { controller.error = error.localizedDescription }
     }
@@ -617,7 +730,7 @@ struct PluginLauncherView: View {
         if resetSelection || !results.contains(where: { $0.id == controller.selectedID }) {
             controller.selectedID = results.first?.id
         }
-        controller.updateLayout(resultCount: results.count)
+        controller.updateLayout(resultCount: results.count, summaryCount: summaries.count)
     }
 }
 
@@ -635,7 +748,7 @@ private struct PluginSearchField: NSViewRepresentable {
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = .systemFont(ofSize: 24)
+        field.font = .systemFont(ofSize: 20)
         field.setAccessibilityLabel(String(localized: "plugins.search"))
         return field
     }

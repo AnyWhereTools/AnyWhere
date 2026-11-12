@@ -2,7 +2,8 @@
 
 English · [简体中文](RELEASING.zh.md) · [Back to home](../README.md)
 
-AnyWhere ships as a **Developer ID-signed, notarized `.dmg`** with **Sparkle** auto-updates.
+AnyWhere supports a **Developer ID-signed, notarized `.dmg`** with **Sparkle** auto-updates,
+or an explicitly selected ad-hoc build without notarization or automatic updates.
 This document covers the one-time setup and the per-release flow.
 
 Keychain use below belongs to developer signing and release tooling. Plugin password settings
@@ -98,7 +99,20 @@ notarizes + staples it, and prints the Sparkle signature. Artifact: `build/relea
 
 ### Via CI (recommended)
 
-Commit the release changes, then create and push the version tag:
+Commit and push the release changes, then manually run the workflow:
+
+```bash
+gh workflow run release.yml --ref main -f version=0.1.0 -f unsigned=false
+```
+
+Use `-f unsigned=true` when signing credentials are unavailable. This builds a universal
+Apple Silicon + Intel app, verifies its ad-hoc signature, and publishes a DMG and
+`SHA256SUMS.txt`. The release notes disclose the missing notarization and Gatekeeper
+restrictions. This mode does not generate or update the Sparkle feed. The workflow
+creates `v<version>` at the exact checked-out commit and refuses an existing release
+or a tag pointing to a different commit.
+
+Alternatively, create and push a version tag for a signed release:
 
 ```bash
 git tag v1.0.0 && git push origin v1.0.0
@@ -107,7 +121,7 @@ git tag v1.0.0 && git push origin v1.0.0
 The release script takes the version from the tag, overrides `MARKETING_VERSION`, and generates
 an increasing `CURRENT_PROJECT_VERSION`. Keep the build-variable placeholders in `App/Info.plist`.
 
-`release.yml` then builds, signs, notarizes, creates a GitHub Release with the dmg, regenerates
+In signed mode, `release.yml` builds, signs, notarizes, creates a GitHub Release with the dmg, regenerates
 `appcast.xml`, and pushes it to `main`. Sparkle clients poll `SUFeedURL`
 (`…/main/appcast.xml`) and offer the update.
 

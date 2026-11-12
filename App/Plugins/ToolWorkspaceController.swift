@@ -8,13 +8,11 @@ final class ToolWorkspaceController {
     private(set) var windows: [UUID: ToolWindowController] = [:]
 
     @discardableResult func open(_ entry: PluginLauncherEntry, invocation: PluginInvocation) -> ToolWindowController {
-        if let existing = windows[entry.id] { existing.showWindow(nil); existing.window?.makeKeyAndOrderFront(nil); return existing }
+        if let existing = windows[entry.id] { existing.showWindow(nil); return existing }
         let controller = ToolWindowController(entry: entry, invocation: invocation)
         controller.onClose = { [weak self] in self?.windows.removeValue(forKey: entry.id) }
         windows[entry.id] = controller
         controller.showWindow(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        controller.window?.makeKeyAndOrderFront(nil)
         return controller
     }
 
@@ -43,8 +41,9 @@ final class ToolWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     init(entry: PluginLauncherEntry, invocation: PluginInvocation) {
         session = PluginSession(entry: entry, invocation: invocation)
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: CGFloat(entry.definition.ui?.height ?? 460)),
-                             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        // Take keyboard focus without raising the application's settings and other windows.
+        let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 680, height: CGFloat(entry.definition.ui?.height ?? 460)),
+                             styleMask: [.titled, .closable, .miniaturizable, .resizable, .nonactivatingPanel], backing: .buffered, defer: false)
         window.title = entry.definition.title
         window.identifier = NSUserInterfaceItemIdentifier("AnyWhere.tool." + entry.id.uuidString)
         window.isReleasedWhenClosed = false
@@ -62,6 +61,13 @@ final class ToolWindowController: NSWindowController, NSWindowDelegate, NSToolba
         installContent()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        window?.makeKeyAndOrderFront(sender)
+        // An inactive app's normal-level panel otherwise stays behind the active app.
+        window?.orderFrontRegardless()
+    }
 
     private func installContent() {
         session.onBack = { [weak self] in _ = self?.endSession() }
@@ -95,7 +101,7 @@ final class ToolWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
     func activate(invocation: PluginInvocation) {
         session.activate(invocation)
-        NSApp.activate(ignoringOtherApps: true); showWindow(nil); window?.makeKeyAndOrderFront(nil)
+        showWindow(nil)
     }
     @discardableResult func endSession() -> Bool {
         guard session.close(waitForTask: true) else { return false }

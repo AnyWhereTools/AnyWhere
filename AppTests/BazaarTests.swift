@@ -141,7 +141,7 @@ final class BazaarTests: XCTestCase {
         XCTAssertTrue(removed.updates.isEmpty)
     }
 
-    func testUpdateButtonsRenderInMarketplaceAndCollapsedInstalledRow() async throws {
+    func testUpdateButtonsRenderInMarketplaceAndInstalledRow() async throws {
         let response = try JSONSerialization.data(withJSONObject: ["schemaVersion": 1, "packages": [entry()]])
         BazaarCatalogProtocol.response = response
         URLProtocol.registerClass(BazaarCatalogProtocol.self)
@@ -163,9 +163,9 @@ final class BazaarTests: XCTestCase {
         let update = try XCTUnwrap(manager.updates[installed.key])
         try await Task.sleep(nanoseconds: 100_000_000)
         try capture(market, path: "/tmp/anywhere-update-market.png")
-        let row = NSHostingView(rootView: PackRow(pack: installed, update: update, expanded: false,
-            onToggleExpand: {}, onSetEnabled: { _, _ in }, onViewScript: { _ in }, onUpdate: {}, onOpenRepo: {}, onUninstall: {}))
-        window.setContentSize(NSSize(width: 800, height: 80)); window.contentView = row
+        let row = NSHostingView(rootView: PackRow(pack: installed, update: update,
+            onSetEnabled: { _, _ in }, onViewScript: { _ in }, onUpdate: {}, onOpenRepo: {}, onUninstall: {}))
+        window.setContentSize(NSSize(width: 800, height: 160)); window.contentView = row
         try await Task.sleep(nanoseconds: 100_000_000)
         try capture(row, path: "/tmp/anywhere-update-row.png")
     }
@@ -175,6 +175,59 @@ final class BazaarTests: XCTestCase {
         let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
         view.cacheDisplay(in: view.bounds, to: bitmap)
         try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: URL(fileURLWithPath: path))
+    }
+
+    func testInstalledPluginSelectionShowsInlineSettings() async throws {
+        BazaarCatalogProtocol.response = try JSONSerialization.data(withJSONObject: ["schemaVersion": 1, "packages": []])
+        URLProtocol.registerClass(BazaarCatalogProtocol.self)
+        let state = AppState.shared, originalConfig = AppState.shared.config, originalManager = AppState.shared.packManager
+        let originalTab = state.settingsTab
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let preferences = PluginPreferencesStore(directory: root)
+        var packs: [InstalledPack] = []
+        state.config.actions = []
+        for (index, name) in ["待办 Todo", "网页快开"].enumerated() {
+            let key = "pack-layout-test-\(index)"
+            let definition = PackAction(id: "tool", title: name, script: "run.sh",
+                                        launcher: PackLauncher(keywords: [index == 0 ? "todo" : "web"]), contextMenu: false)
+            let action = MenuAction(id: PackManager.actionUUID(packKey: key, packActionID: "tool"), title: name,
+                                    icon: .symbol("bolt"), kind: .runScript(ScriptSpec(inlineSource: "")),
+                                    matching: MatchRule(), placement: .topLevel, packID: key, isEnabled: false, sortOrder: index)
+            state.config.actions.append(action)
+            try preferences.setEnabled(true, actionID: action.id)
+            packs.append(InstalledPack(key: key, manifest: PackManifest(schemaVersion: 4, name: name, actions: [definition]),
+                                       repoURL: "", repo: "AnyWhereTools/plugin", commitSHA: sha, enabledCount: 1, totalCount: 1))
+        }
+        let manager = PackManager(packs: packs, preferences: preferences)
+        state.packManager = manager; state.settingsTab = .packs
+        let host = NSHostingView(rootView: SettingsWindow())
+        let window = NSWindow(contentRect: .init(x: 0, y: 0, width: 1040, height: 680), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host; window.makeKeyAndOrderFront(nil)
+        defer {
+            window.contentView = nil; window.close()
+            state.config = originalConfig; state.packManager = originalManager; state.settingsTab = originalTab
+            URLProtocol.unregisterClass(BazaarCatalogProtocol.self)
+            try? FileManager.default.removeItem(at: root)
+        }
+        func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap { descendants($0) } }
+        for _ in 0..<100 {
+            if descendants(host).compactMap({ $0 as? NSTextField }).contains(where: { $0.stringValue == "待办 Todo" }) { break }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        let list = try XCTUnwrap(descendants(host).compactMap { $0 as? NSTableView }.first { $0.numberOfRows == 2 })
+        XCTAssertEqual(list.selectedRow, 0)
+        XCTAssertTrue(descendants(host).compactMap { $0 as? NSTextField }.contains { $0.stringValue == "待办 Todo" })
+        XCTAssertTrue(window.sheets.isEmpty)
+        try capture(host, path: "/tmp/anywhere-packs-split-todo.png")
+        list.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
+        try await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertEqual(list.selectedRow, 1)
+        XCTAssertTrue(descendants(host).compactMap { $0 as? NSTextField }.contains { $0.stringValue == "网页快开" })
+        XCTAssertFalse(descendants(host).compactMap { $0 as? NSTextField }.contains { $0.stringValue == "待办 Todo" })
+        XCTAssertTrue(window.sheets.isEmpty, "Selecting a plugin must update the right pane without a settings sheet")
+        try capture(host, path: "/tmp/anywhere-packs-split-web.png")
     }
 
     func testCheckoutPinsSelectedCommitInsteadOfHeadAndCleansFailures() async throws {

@@ -133,6 +133,22 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
             throw PluginError(.denied, "Reminders must be modified through a plugin command.")
         }
     }
+    /// Runs a plugin handler without presenting a launcher or a tool window.
+    func performNotificationAction(_ event: PluginNotificationResponse) async throws {
+        let timeout = Task { @MainActor [weak self] in
+            do { try await Task.sleep(nanoseconds: 20_000_000_000) } catch { return }
+            self?.close(discardUnsaved: true)
+        }
+        defer { timeout.cancel() }
+        for _ in 0..<200 {
+            guard !closed else { throw PluginError(.sessionClosed, "Session ended.") }
+            if webView.url != nil && !webView.isLoading { break }
+            try await Task.sleep(nanoseconds: 25_000_000)
+        }
+        guard !closed else { throw PluginError(.timedOut, "Notification action timed out.") }
+        _ = try await webView.callAsyncJavaScript("return await window.__anywhereNotificationAction(event)",
+            arguments: ["event": try encoded(event)], in: nil, contentWorld: .page)
+    }
     func activate(_ invocation: PluginInvocation) {
         guard !closed else { return }
         self.invocation = invocation
@@ -326,6 +342,7 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
         }
     }
 
+
     private func taskResponse(_ result: PluginTaskResult) -> [String: Any] {
         // Full output arrives as events; the result carries bounded summaries.
         ["result": ["exitCode": result.exitCode, "stdout": String(result.stdout.prefix(32768)),
@@ -404,6 +421,11 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
           return {value: await commandHandlers[operation](params)};
         } catch (error) { return {error: {code: error.code || 'failed', message: error.message || String(error)}}; }
       };
+      window.__anywhereNotificationAction = async event => {
+        for (let i = 0; i < 200 && !notificationHandler; i++) await new Promise(resolve => setTimeout(resolve, 25));
+        if (!notificationHandler) throw new Error('插件未注册通知操作处理器，请更新插件后重试。');
+        await notificationHandler(event);
+      };
       const enterListeners = new Set();
       window.__anywhereEnter = value => { context = Promise.resolve(value); enterListeners.forEach(fn => fn(value)); };
       const documentRead = async draft => {
@@ -453,7 +475,9 @@ final class PluginSession: NSObject, ObservableObject, WKScriptMessageHandlerWit
           copyText: text => documentWrite(text, false, 0, 'document.json', true),
           saveAs: (text, name) => documentWrite(text, false, 0, name)},
         launcher: {setEntries: entries => request('launcher.setEntries', {entries}), open: (id, argument = '') => request('launcher.open', {id, argument})},
-        notifications: {status: () => request('notifications.status'), replace: reminders => request('notifications.replace', {reminders})},
+        notifications: {presentations: Object.freeze(['system', 'panel']), supportsActions: true, supportsInlineActions: true,
+          onAction: callback => { notificationHandler = callback; return () => { if (notificationHandler === callback) notificationHandler = undefined; }; },
+          status: () => request('notifications.status'), replace: reminders => request('notifications.replace', {reminders})},
         workflow: {context: () => request('workflow.context'), complete: output => request('workflow.complete', {output})},
         config: {get: () => request('config.get')},
         storage: {get: key => request('storage.get', {key}), set: (key, value) => request('storage.set', {key, value}), remove: key => request('storage.remove', {key})},

@@ -4,6 +4,8 @@
 
 English · [简体中文](README.zh.md)
 
+Build plugins or contribute to the host: [Developer docs](docs/README.md) · [Notifications and buttons](docs/plugin-notifications.md)
+
 AnyWhere is a script-first, open-source (MIT) menu-bar app that lets you add your own
 right-click actions, manage the system menu items other tools can't touch, and install
 community “extension packs” — all without repeating permission prompts. Distributed as a

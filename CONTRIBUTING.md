@@ -1,16 +1,14 @@
 # Contributing to AnyWhere
 
-English · [简体中文](CONTRIBUTING.zh.md) · [Back to home](README.md)
+English · [简体中文](CONTRIBUTING.zh.md) · [Developer docs](docs/README.md) · [Back to home](README.md)
 
 Thanks for your interest! AnyWhere is a SwiftUI menu-bar app + Finder Sync extension, with a
 pure-logic Swift package at its core.
 
 ## Development setup
 
-For custom plugins, start with [Text Toolbox](examples/ui-tool-pack/README.md) and the
-[UI guide](docs/plugin-ui.md). After `make gen`, run host tests with
-`xcodebuild -project AnyWhere.xcodeproj -scheme AnyWhere -destination 'platform=macOS' test`.
-Core and preset checks remain `make test` and `make test-presets`.
+Plugin authors should start with [Developer docs](docs/README.md) for the quickstart,
+SDK, notifications, examples and debugging. The following covers host development.
 
 Requirements: macOS 13+, Xcode 16.3+ (Swift 6.1 for the MCP helper SDK), Homebrew (for `xcodegen`).
 
@@ -45,6 +43,16 @@ Put pure logic in **AnyWhereCore** with tests. Keep the extension thin.
 `make test` must stay green. Core logic is TDD'd; add tests under
 `Core/Tests/AnyWhereCoreTests/`. Tests must not depend on the user's locale — look actions up
 by `presetKey`, not by their (localized) title.
+
+Use `make test-presets` for preset scripts and `make build` to catch App/FinderExtension compile errors. Storage tests use temporary directories, not real user data.
+
+Host integration tests in `AppTests/` are separate from `make test`. Run `make gen` first, then:
+
+```sh
+xcodebuild -project AnyWhere.xcodeproj -scheme AnyWhere -destination 'platform=macOS' test
+```
+
+The full `OfficialPluginTests` suite needs sibling checkouts of `anywhere-json-tools`, `anywhere-quicklinks` and `anywhere-todo`. For Todo alone, use the [selected notification tests](docs/plugin-notifications.md#5-test-with-todo). System-delivery checks need notification authorization; actual Notification Center button clicks require separate acceptance testing. Current CI does not run these host integration tests.
 
 ## Internationalization
 

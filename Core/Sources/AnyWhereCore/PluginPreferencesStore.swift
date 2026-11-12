@@ -18,6 +18,7 @@ public final class PluginPreferencesStore {
         var actions: [String: Set<UUID>] = [:]
         // Optional so preference files written before shortcuts still decode.
         var shortcuts: [String: PluginShortcut]?
+        var pinnedSummaries: [String]?
         var mcpApprovals: [String: String]?
     }
     private let file: PluginJSONFile<State>
@@ -36,7 +37,18 @@ public final class PluginPreferencesStore {
         }
     }
     public func setEnabled(_ enabled: Bool, actionID: UUID) throws { try file.update { $0.enabled[actionID.uuidString] = enabled } }
-    public func recent() throws -> [UUID] { try file.read().recent.compactMap(UUID.init(uuidString:)) }
+    public func recentIDs() throws -> [String] { try file.read().recent }
+    public func recent() throws -> [UUID] { try recentIDs().compactMap(UUID.init(uuidString:)) }
+    public func pinnedSummaries() throws -> [String] { try file.read().pinnedSummaries ?? [] }
+    public func setSummaryPinned(_ pinned: Bool, packKey: String) throws {
+        try file.update { state in
+            var keys = state.pinnedSummaries ?? []
+            if pinned {
+                if !keys.contains(packKey) { keys.append(packKey) }
+            } else { keys.removeAll { $0 == packKey } }
+            state.pinnedSummaries = keys
+        }
+    }
     public func removeShortcut(actionID: UUID) throws {
         try file.update {
             $0.shortcuts?.removeValue(forKey: actionID.uuidString)
@@ -54,7 +66,7 @@ public final class PluginPreferencesStore {
     public func setShortcut(_ shortcut: PluginShortcut, actionID: UUID, defaults: [PluginSearchEntry]) throws {
         let title = shortcut.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let keywords = shortcut.keywords.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        guard !title.isEmpty, !keywords.isEmpty,
+        guard !title.isEmpty,
               keywords.allSatisfy({ !$0.isEmpty && $0.rangeOfCharacter(from: .controlCharacters) == nil }) else {
             throw PluginShortcutError.invalidShortcut
         }
@@ -74,9 +86,15 @@ public final class PluginPreferencesStore {
         }
     }
     public func recordUse(actionID: UUID, at: Date = Date()) throws {
+        try recordUse(id: actionID.uuidString)
+    }
+    public func recordUse(applicationURL: URL) throws {
+        try recordUse(id: applicationURL.path)
+    }
+    private func recordUse(id: String) throws {
         try file.update {
-            $0.recent.removeAll { $0 == actionID.uuidString }
-            $0.recent.insert(actionID.uuidString, at: 0)
+            $0.recent.removeAll { $0 == id }
+            $0.recent.insert(id, at: 0)
             $0.recent = Array($0.recent.prefix(10))
         }
     }
@@ -86,6 +104,7 @@ public final class PluginPreferencesStore {
     public func knownActions(packKey: String) throws -> Set<UUID> { try file.read().actions[packKey] ?? [] }
     public func removePack(packKey: String) throws {
         try file.update { state in
+            state.pinnedSummaries?.removeAll { $0 == packKey }
             let ids = Set((state.actions.removeValue(forKey: packKey) ?? []).map(\.uuidString))
             state.enabled = state.enabled.filter { !ids.contains($0.key) }
             state.recent.removeAll { ids.contains($0) }

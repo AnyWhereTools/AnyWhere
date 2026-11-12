@@ -4,6 +4,8 @@
 
 [English](README.md) · 简体中文
 
+开发插件或参与主工程：[开发者文档](docs/README.zh.md) · [通知与操作按钮](docs/plugin-notifications.zh.md)
+
 AnyWhere 是一个**脚本优先**、开源(MIT)的菜单栏应用:加你自己的右键动作、管理别的工具碰不到的系统菜单项、安装社区「扩展包」——而且不会反复弹授权框。以 Developer ID 形式分发(非沙盒主 App + 沙盒 Finder Sync 扩展),最低 macOS 13 Ventura,界面支持 **English / 简体中文**。
 
 ---

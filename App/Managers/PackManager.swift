@@ -7,6 +7,7 @@ import AnyWhereCore
 /// 已安装扩展包的视图模型(由 installed.json + config 派生)。
 struct InstalledPack: Identifiable, Equatable {
     var id: String { key }
+    var directory: URL { PackManager.packDir(key) }
     let key: String              // 安装目录名(owner-repo sanitize)
     let manifest: PackManifest
     let repoURL: String          // 克隆用完整 URL
@@ -81,7 +82,7 @@ final class PackManager: ObservableObject {
     @Published private(set) var lastUpdateCheck: Date?
     @Published private(set) var updateCheckError: String?
     private var updateCheckGeneration = 0
-    let preferences = PluginPreferencesStore(directory: AppPaths.configDirectory())
+    let preferences: PluginPreferencesStore
     static func dataDirectory(_ key: String) -> URL {
         AppPaths.configDirectory().appendingPathComponent("PluginData", isDirectory: true).appendingPathComponent(key, isDirectory: true)
     }
@@ -90,9 +91,10 @@ final class PackManager: ObservableObject {
     /// 默认参数避免引用 @MainActor 的 AppState.shared(默认参数在非隔离上下文求值);
     /// 传 nil 时由 appState() 在 @MainActor 调用点惰性解析。
     private let appStateOverride: (() -> AppState)?
-    init(appState: (() -> AppState)? = nil, packs: [InstalledPack] = []) {
+    init(appState: (() -> AppState)? = nil, packs: [InstalledPack] = [], preferences: PluginPreferencesStore? = nil) {
         self.appStateOverride = appState
         self.packs = packs
+        self.preferences = preferences ?? PluginPreferencesStore(directory: AppPaths.configDirectory())
     }
     private func appState() -> AppState { appStateOverride?() ?? AppState.shared }
 
@@ -118,13 +120,13 @@ final class PackManager: ObservableObject {
 
     // MARK: Paths
 
-    private static var packsRoot: URL {
+    nonisolated private static var packsRoot: URL {
         AppPaths.configDirectory().appendingPathComponent("Packs", isDirectory: true)
     }
     private static var installedFile: URL {
         packsRoot.appendingPathComponent("installed.json")
     }
-    private static func packDir(_ key: String) -> URL {
+    nonisolated static func packDir(_ key: String) -> URL {
         packsRoot.appendingPathComponent(key, isDirectory: true)
     }
 
@@ -155,6 +157,7 @@ final class PackManager: ObservableObject {
         PluginServices.shared.reconcile(serviceEntries)
         PluginCommandRuntime.shared.reconcile(activeCommands, declarations: commandEntries)
         PluginMCPRegistry.shared.reconcile(commandEntries, preferences: preferences)
+        PluginLauncherController.shared.reloadActionHotKeys()
     }
 
     // MARK: - Import: step 1 — clone (NEVER executes scripts)
@@ -297,13 +300,37 @@ final class PackManager: ObservableObject {
         reload()
     }
 
+    /// One root summary per pack; its first enabled UI entry opens the full tool.
+    func summaryEntries() -> [PluginLauncherEntry] {
+        var seen = Set<String>()
+        return launcherEntries().filter { entry in
+            guard let key = entry.action.packID, entry.definition.ui != nil,
+                  (try? PluginResourceResolver.resolve(root: entry.directory, relativePath: "summary.html")) != nil else { return false }
+            return seen.insert(key).inserted
+        }
+    }
+
+    func setSummaryPinned(_ pinned: Bool, entry: PluginLauncherEntry) throws {
+        guard let key = entry.action.packID,
+              summaryEntries().contains(where: { $0.action.packID == key }) else {
+            throw PluginError(.denied, "请先启用支持摘要的插件。")
+        }
+        try preferences.setSummaryPinned(pinned, packKey: key)
+        objectWillChange.send()
+        NotificationCenter.default.post(name: PluginServices.changed, object: nil)
+    }
+
     func shortcutEntries(includeDisabled: Bool = false) throws -> [PluginSearchEntry] {
+        let local = appState().config.actions.filter { $0.packID == nil && $0.shortcutOnly == true && (includeDisabled || $0.isEnabled) }
+        let configured = try preferences.searchEntries(local.map { PluginSearchEntry(id: $0.id, title: $0.title, keywords: []) })
+        return zip(local, configured).map { PluginSearchEntry(id: $0.0.id, title: $0.0.title, keywords: $0.1.keywords) }
+    }
+
+    func searchEntries(includeDisabled: Bool = false) throws -> [PluginSearchEntry] {
         let installed = try preferences.searchEntries(launcherEntries(includeDisabled: includeDisabled).map {
             PluginSearchEntry(id: $0.id, title: $0.definition.title, keywords: $0.definition.launcher?.keywords ?? [])
         })
-        let local = appState().config.actions.filter { $0.shortcutOnly == true && (includeDisabled || $0.isEnabled) }
-        let configured = try preferences.searchEntries(local.map { PluginSearchEntry(id: $0.id, title: $0.title, keywords: []) })
-        return zip(local, configured).map { PluginSearchEntry(id: $0.0.id, title: $0.0.title, keywords: $0.1.keywords) } + installed
+        return try shortcutEntries(includeDisabled: includeDisabled) + installed
     }
 
     nonisolated static func workflowUUID(packKey: String, workflowID: String) -> UUID {
@@ -317,7 +344,7 @@ final class PackManager: ObservableObject {
     }
 
     func launcherCatalog() throws -> LauncherCatalog {
-        let shortcuts = try shortcutEntries()
+        let shortcuts = try searchEntries()
         var entries = launcherEntries().compactMap { plugin -> LauncherEntry? in
             guard let search = shortcuts.first(where: { $0.id == plugin.id }) else { return nil }
             let pack = packs.first { $0.key == plugin.action.packID }
@@ -357,7 +384,7 @@ final class PackManager: ObservableObject {
     }
 
     func setShortcut(_ shortcut: PluginShortcut, actionID: UUID) throws {
-        let defaults = try shortcutEntries(includeDisabled: true)
+        let defaults = try searchEntries(includeDisabled: true)
         try preferences.setShortcut(shortcut, actionID: actionID, defaults: defaults)
         reload()
     }
@@ -575,6 +602,7 @@ final class PackManager: ObservableObject {
         // encoded into the deterministic UUID).
         var config = appState().config
         var enabledByPackActionID: [String: Bool] = [:]
+        let hotKeys = Dictionary(uniqueKeysWithValues: config.actions.filter { $0.packID == key }.map { ($0.id, $0.shortcutHotKey) })
         for action in config.actions where action.packID == key {
             if let paID = Self.packActionID(of: action, packKey: key, manifest: update.newManifest) {
                 enabledByPackActionID[paID] = action.isEnabled
@@ -598,6 +626,7 @@ final class PackManager: ObservableObject {
             var a = Self.menuAction(from: pa, packKey: key, repo: update.newRepo,
                                     packDir: dest, sortOrder: baseOrder + offset)
             a.isEnabled = enabledByPackActionID[pa.id] ?? false
+            a.shortcutHotKey = hotKeys[a.id] ?? nil
             let old = oldManifest?.actions.first { $0.id == pa.id }
             if !Set(pa.capabilities).isSubset(of: Set(old?.capabilities ?? [])) { a.isEnabled = false }
             return a
@@ -678,7 +707,7 @@ final class PackManager: ObservableObject {
         return MenuAction(
             id: actionUUID(packKey: packKey, packActionID: pa.id),
             title: pa.title,
-            icon: .symbol(pa.icon),
+            icon: IconStore.importPackIcon(pa.icon, directory: packDir),
             kind: kind,
             matching: pa.matching,
             placement: pa.placement,

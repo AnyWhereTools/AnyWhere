@@ -17,6 +17,18 @@ enum IconStore {
     static func importImage(from src: URL) -> String? {
         guard let source = NSImage(contentsOf: src),
               let png = scaledPNG(source) else { return nil }
+        return storePNG(png)
+    }
+
+    static func importPackIcon(_ icon: String, directory: URL) -> IconSpec {
+        guard PackIcon.imagePath(icon) != nil else { return .symbol(icon) }
+        guard let data = try? PackIcon.pngData(icon, in: directory),
+              let image = NSImage(data: data), let png = scaledPNG(image),
+              let name = storePNG(png) else { return .symbol("photo") }
+        return .imageFile(name)
+    }
+
+    private static func storePNG(_ png: Data) -> String? {
         let dir = AppPaths.iconsDirectory()
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

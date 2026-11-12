@@ -325,7 +325,7 @@ struct PackImportSheet: View {
             VStack(spacing: 0) {
                 SheetHead(step: 3, title: String(localized: "packImport.confirmTitle"))
                 VStack(spacing: 14) {
-                    AppIcon(cloned.manifest.icon, size: 52, hue: .teal)
+                    PluginIconView(icon: cloned.manifest.icon, directory: cloned.tempDir, size: 52)
                     VStack(spacing: 2) {
                         Text(cloned.manifest.name).font(.system(size: 15, weight: .semibold))
                         Text(cloned.isLocal
@@ -627,7 +627,7 @@ struct PackUpdateSheet: View {
 
     private var updateHead: some View {
         HStack(alignment: .center, spacing: 12) {
-            AppIcon(pack.manifest.icon, size: 34, hue: .teal)
+            PluginIconView(icon: pack.manifest.icon, directory: pack.directory, size: 34)
             VStack(alignment: .leading, spacing: 2) {
                 Text(String(format: String(localized: "packImport.updateTitle"), pack.manifest.name))
                     .font(.system(size: 14.5, weight: .semibold))

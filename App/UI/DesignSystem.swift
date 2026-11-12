@@ -157,27 +157,7 @@ struct ActionIconView: View {
             AppIcon(name, size: size, hue: hue)
         case .imageFile(let fileName):
             if let nsImage = IconStore.loadNSImage(fileName) {
-                let radius = size * 0.235
-                Image(nsImage: nsImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: size, height: size)
-                    .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-                    .overlay( // 顶部内高光(同 AppIcon)
-                        RoundedRectangle(cornerRadius: radius, style: .continuous)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [Color.white.opacity(0.4), Color.clear],
-                                    startPoint: .top, endPoint: .center
-                                ),
-                                lineWidth: kHairline
-                            )
-                    )
-                    .overlay( // 外描边,贴合图片边缘
-                        RoundedRectangle(cornerRadius: radius, style: .continuous)
-                            .stroke(AWColor.border, lineWidth: kHairline)
-                    )
-                    .shadow(color: Color.black.opacity(0.2), radius: 0.5, x: 0, y: 0.5)
+                ImageIconView(image: nsImage, size: size)
             } else {
                 AppIcon("photo", size: size, hue: hue)   // 图片缺失回退
             }
@@ -990,5 +970,34 @@ private struct DesignSystemPreview: View {
                 """, maxHeight: 140)
             }
         }
+    }
+}
+
+/// Shared image treatment for user actions and plugin artwork.
+struct ImageIconView: View {
+    let image: NSImage
+    let size: CGFloat
+    var body: some View {
+        let radius = size * 0.235
+        Image(nsImage: image)
+            .resizable()
+            .scaledToFill()
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .overlay( // 顶部内高光(同 AppIcon)
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.4), Color.clear],
+                            startPoint: .top, endPoint: .center
+                        ),
+                        lineWidth: kHairline
+                    )
+            )
+            .overlay( // 外描边,贴合图片边缘
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .stroke(AWColor.border, lineWidth: kHairline)
+            )
+            .shadow(color: Color.black.opacity(0.2), radius: 0.5, x: 0, y: 0.5)
     }
 }

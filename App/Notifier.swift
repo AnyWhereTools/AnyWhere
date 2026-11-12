@@ -3,7 +3,7 @@ import UserNotifications
 
 enum Notifier {
     static func requestAuthorizationOnce() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, _ in }
+        Permissions.requestNotifications()
     }
 
     static func showFailure(_ title: String, _ message: String) {

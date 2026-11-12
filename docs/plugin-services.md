@@ -1,6 +1,6 @@
 # Plugin host services
 
-[简体中文](plugin-services.zh.md) · [Type declarations](sdk/anywhere.d.ts) · [UI SDK](plugin-ui.md)
+[简体中文](plugin-services.zh.md) · [Developer docs](README.md) · [Type declarations](sdk/anywhere.d.ts) · [UI SDK](plugin-ui.md)
 
 Three new capabilities extend schema 4 / UI API 1: `documents`, `launcher.entries`, `notifications`. Older hosts reject unknown capabilities and must be upgraded. Existing capability escalation reviews still apply.
 
@@ -22,11 +22,21 @@ The host owns source identity and reuses its name/pinyin/initial/alias matching.
 
 `notifications.status()` reports `authorized`, `denied` or `notDetermined`. `replace(reminders)` persists the action's desired set and synchronizes OS requests. Each reminder is `{id,title,body,date,recurrence}`, with Unix **seconds** and recurrence `none`, `daily` or `weekly`. Limit: 50 per action; OS restrictions are returned as errors. An empty list cancels this action's requests.
 
-Past one-time dates are not replayed. Repeating reminders match the local time/weekday at the next occurrence. Stable identifiers are namespaced by the host; updates replace, completion/deletion cancels, and unchanged synchronization retains delivered notifications. A plugin cannot cancel another action's reminders. Disabling/removing a source or its capability cancels its notifications; re-enabling retained data restores still-valid schedules.
+Past one-time system dates are not replayed. Repeating reminders match the local time/weekday at the next occurrence. Stable identifiers are namespaced by the host; updates replace, completion/deletion cancels, and unchanged synchronization retains delivered notifications. A plugin cannot cancel another action's reminders. Disabling/removing a source or its capability cancels its notifications; re-enabling retained data restores still-valid schedules.
 
-The first requested reminder may ask for OS permission. Denial is returned explicitly. Check `{authorization,errors}` and distinguish saved task data from scheduled or delivered notifications. Scheduling is owned by macOS, not a page timer.
+Page-initiated system synchronization requests alert and sound authorization, including for installations previously requesting alerts only. Once macOS records a choice, subsequent requests do not repeat the initial prompt or override a user's notification denial. Denial is returned explicitly. Check `{authorization,errors}` and distinguish saved task data from scheduled or delivered notifications. macOS schedules system notifications; the running AnyWhere host schedules panels. Neither depends on a page timer.
 
 Notification clicks verify installation/enablement and open the action with `invocation.argument` equal to the reminder ID. Cold starts wait for packs to load. Existing panels receive a new `onEnter` context; detached windows are focused. Subscribe to reactivation instead of reading invocation only once at startup.
+
+### Presentation and actions
+
+See the [notification guide](plugin-notifications.md) for complete examples, parameter limits, button handling and Todo testing.
+
+The plugin selects `presentation: "system" | "panel"` per reminder (default: system), and supplies up to two `actions: [{id,title}]` with unique IDs. Feature-detect `notifications.presentations` and `supportsActions` on older hosts. The host renders, schedules, validates ownership, and activates the plugin with `invocation.notification = {id,itemID,actionID}`. Plugins persist the event ID for replay protection and own all business changes and subsequent `replace` calls. Closing a notification never means completing a task. Stale actions on changed or removed reminders are ignored.
+
+macOS controls system banner persistence, action layout and Focus. Panels require AnyWhere running, independently of the plugin page and system notification permission. Overdue one-time panels appear on the next host start; previously presented single reminders do not reappear on sync/restart. Repeating panels coalesce missed occurrences before scheduling the next one. Check errors for both presentations; authorization applies to system requests.
+
+Todo owns the presentation selector, completion and snooze picker. Snooze keeps the task incomplete and moves its reminder time; for repeating tasks it also moves future repeat times and must remain within one repeat period, as explained in the picker.
 
 ## Persistence and checks
 

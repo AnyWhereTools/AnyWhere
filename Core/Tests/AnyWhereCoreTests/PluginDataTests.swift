@@ -2,6 +2,22 @@ import XCTest
 @testable import AnyWhereCore
 
 final class PluginDataTests: XCTestCase {
+    func testSummaryPinsMigratePersistDeduplicateAndUninstall() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data(#"{"enabled":{},"recent":[],"actions":{}}"#.utf8).write(to: root.appendingPathComponent("plugin-preferences.json"))
+        let prefs = PluginPreferencesStore(directory: root)
+        XCTAssertEqual(try prefs.pinnedSummaries(), [])
+        try prefs.setSummaryPinned(true, packKey: "a")
+        try prefs.setSummaryPinned(true, packKey: "b")
+        try prefs.setSummaryPinned(true, packKey: "a")
+        XCTAssertEqual(try PluginPreferencesStore(directory: root).pinnedSummaries(), ["a", "b"])
+        try prefs.setSummaryPinned(false, packKey: "a")
+        XCTAssertEqual(try prefs.pinnedSummaries(), ["b"])
+        try prefs.removePack(packKey: "b")
+        XCTAssertEqual(try prefs.pinnedSummaries(), [])
+    }
     func testShortcutOverridesMigratePersistAndRejectConflicts() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -30,6 +46,17 @@ final class PluginDataTests: XCTestCase {
         try p.removePack(packKey: "xlog")
         XCTAssertEqual(try p.searchEntries([a, b]), [a, b])
     }
+    func testKeywordsCanBeClearedForHotKeyOnlyActions() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = PluginPreferencesStore(directory: root)
+        let entry = PluginSearchEntry(id: UUID(), title: "Terminal", keywords: ["term"])
+        try store.setShortcut(.init(title: entry.title, keywords: []), actionID: entry.id, defaults: [entry])
+        XCTAssertEqual(try PluginPreferencesStore(directory: root).searchEntries([entry]).first?.keywords, [])
+        XCTAssertThrowsError(try store.setShortcut(.init(title: entry.title, keywords: ["\n"]), actionID: entry.id, defaults: [entry]))
+    }
+
     func testIsolationAndPersistence() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -54,8 +81,19 @@ final class PluginDataTests: XCTestCase {
         XCTAssertEqual(try p.recent().count, 10)
         XCTAssertTrue(try PluginPreferencesStore(directory: root).isEnabled(actionID: ids[0]))
         XCTAssertFalse(try p.isEnabled(actionID: ids[1]))
+        let app = URL(fileURLWithPath: "/Applications/SiYuan.app")
+        try p.recordUse(applicationURL: app)
+        try p.recordUse(actionID: ids[0])
+        XCTAssertEqual(try p.recentIDs().prefix(2), [ids[0].uuidString, app.path])
+        try p.recordUse(applicationURL: app)
+        let recent = try PluginPreferencesStore(directory: root).recentIDs()
+        XCTAssertEqual(recent.count, 10)
+        XCTAssertEqual(recent.prefix(2), [app.path, ids[0].uuidString])
+        XCTAssertEqual(recent.filter { $0 == app.path }.count, 1)
+        XCTAssertEqual(try p.recent().count, 9)
         try p.removePack(packKey: "a")
         XCTAssertEqual(try p.recent(), [])
+        XCTAssertEqual(try p.recentIDs(), [app.path])
         XCTAssertFalse(try p.isEnabled(actionID: ids[0]))
     }
 }

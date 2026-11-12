@@ -29,7 +29,7 @@ public struct PackManifest: Codable, Equatable, Sendable {
     public var name: String          // 包名(显示)
     public var author: String?
     public var description: String?
-    public var icon: String          // SF Symbol 名,默认 shippingbox
+    public var icon: String          // SF Symbol 名或包内图片路径，默认 shippingbox
     public var actions: [PackAction]
     public var uiApiVersion: Int?
     public var workflows: [PackWorkflow]
@@ -104,6 +104,7 @@ public struct PackManifest: Codable, Equatable, Sendable {
     }
 
     public func validate() throws {
+        try PackIcon.validate(icon)
         if schemaVersion > Self.currentSchemaVersion {
             throw ValidationError.incompatibleSchema(found: schemaVersion)
         }
@@ -121,6 +122,7 @@ public struct PackManifest: Codable, Equatable, Sendable {
         var mcpNames = Set<String>()
         var managedKeys = Set<String>()
         for action in actions {
+            try PackIcon.validate(action.icon)
             let id = action.id.trimmingCharacters(in: .whitespacesAndNewlines)
             if id.isEmpty { throw ValidationError.emptyActionID }
             if !seen.insert(id).inserted { throw ValidationError.duplicateActionID(id) }
@@ -194,7 +196,7 @@ public struct PackManifest: Codable, Equatable, Sendable {
 public struct PackAction: Codable, Equatable, Sendable {
     public var id: String            // 包内稳定标识(更新时按它匹配)
     public var title: String
-    public var icon: String          // SF Symbol,默认 bolt
+    public var icon: String          // SF Symbol 名或包内图片路径，默认 bolt
     public var script: String?       // 纯 UI 动作无需脚本
     public var ui: PackUI?
     public var launcher: PackLauncher?

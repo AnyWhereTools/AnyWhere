@@ -1,8 +1,10 @@
 # 参与 AnyWhere 开发
 
-[English](CONTRIBUTING.md) · 简体中文 · [返回首页](README.zh.md)
+[English](CONTRIBUTING.md) · 简体中文 · [开发者文档](docs/README.zh.md) · [返回首页](README.zh.md)
 
 AnyWhere 由 SwiftUI 菜单栏应用、Finder Sync 扩展和共享的 Swift Package 组成。
+
+插件作者从[开发者文档](docs/README.zh.md)开始，那里汇总了入门步骤、SDK、通知、示例和调试方法；以下介绍主工程开发。
 
 ## 开发环境
 
@@ -34,6 +36,14 @@ make run         # 构建并启动应用
 
 预设脚本修改可运行 `make test-presets`。只有 Core 测试无法发现 App 或扩展的编译问题，因此提交 PR 前还应运行 `make build`。存储测试使用临时目录，不使用用户真实密码或数据。
 
+宿主集成测试位于 `AppTests/`，不包含在 `make test` 中。首次先运行 `make gen`，再执行：
+
+```sh
+xcodebuild -project AnyWhere.xcodeproj -scheme AnyWhere -destination 'platform=macOS' test
+```
+
+完整 `OfficialPluginTests` 需要在主工程同级目录检出 `anywhere-json-tools`、`anywhere-quicklinks`、`anywhere-todo`；只测试 Todo 时可使用[通知指南中的选定测试命令](docs/plugin-notifications.zh.md#自动化与交互验收)。系统通知送达检查需要系统授权；真实通知中心按钮点击需另行验收。当前 CI 不运行这些宿主集成测试。
+
 ## 国际化
 
 界面使用 **String Catalog** 和**抽象 key**，源语言是英语：
@@ -45,8 +55,6 @@ make run         # 构建并启动应用
 用户文档也按语言配对维护：默认 `.md` 为英文，`.zh.md` 为简体中文；中文页面的站内文档链接应指向中文版，顶部提供语言切换。更新扩展包功能时，同步[扩展包规范](docs/pack-spec.zh.md)和示例说明。
 
 ## 新增内置预设
-
-开发自定义插件时，从[文本工具示例](examples/ui-tool-pack/README.zh.md)开始；API、资源限制和调试方式见[中文 UI 文档](docs/plugin-ui.zh.md)。宿主集成测试由 XcodeGen 的 `AnyWhereTests` 目标提供，可运行 `xcodebuild -project AnyWhere.xcodeproj -scheme AnyWhere -destination 'platform=macOS' test`；首次先运行 `make gen`。Core 单测与现有预设测试仍分别使用 `make test`、`make test-presets`。
 
 1. 在 `App/PresetScripts/` 添加 zsh 脚本，遵循[脚本环境契约](docs/pack-spec.zh.md#script-environment-contract)。
 2. 在 `Core/Sources/AnyWhereCore/Models.swift` 的 `MenuConfig.defaultSeed()` 中注册，使用稳定的 `presetKey` 和抽象标题 key，并补齐 Core 中英文翻译。

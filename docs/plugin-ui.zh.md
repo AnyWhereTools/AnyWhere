@@ -1,6 +1,6 @@
 # 插件搜索与自定义 UI
 
-[English](plugin-ui.md) · [中文首页](../README.zh.md) · [扩展包规范](pack-spec.zh.md)
+[English](plugin-ui.md) · [开发者文档](README.zh.md) · [扩展包规范](pack-spec.zh.md)
 
 插件提供本地 HTML/CSS/JavaScript，AnyWhere 在工具面板或普通独立窗口中显示页面。JSON 只声明入口和能力，页面布局由开发者决定。网页使用浏览器 JavaScript；宿主不提供 Node/Deno。需要联网、处理文件或调用 Go/Rust 二进制时，由已审阅的包内脚本启动后端。
 
@@ -30,9 +30,11 @@
 
 导入后右键与搜索入口均默认禁用。在扩展包详情中分别开启；纯搜索功能也能在这里填写插件配置。通用设置可录制或停用快捷键，默认 `Control+Option+Space`。快捷键冲突会提示并保留旧绑定，菜单栏的「打开插件搜索」仍可用。
 
-搜索收录已启用的工具、自建快捷指令和同包工作流，其后列出匹配的已安装应用；支持名称、全拼和拼音首字母，忽略大小写。工具／动作／工作流先匹配标题，再匹配别名，最后匹配包描述（未填写时用包名）；每组内先按原文完全匹配、前缀、包含排序，再匹配转写结果。原文标题或别名后跟空白时，余下文本作为参数，最长前缀优先；仅通过拼音匹配不会提取参数。方向键选择、回车打开；中文输入法组合输入时回车先确认候选。空查询只显示最近使用，没有历史时显示空态提示。历史不保存查询或参数。
+搜索收录已启用的工具、自建快捷指令和同包工作流，其后列出匹配的已安装应用；支持名称、全拼和拼音首字母，忽略大小写。工具／动作／工作流先匹配标题，再匹配别名，最后匹配包描述（未填写时用包名）；每组内先按原文完全匹配、前缀、包含排序，再匹配转写结果。原文标题或别名后跟空白时，余下文本作为参数，最长前缀优先；仅通过拼音匹配不会提取参数。方向键选择、回车打开；中文输入法组合输入时回车先确认候选。空查询上方显示最近使用的三项，没有历史时显示空态提示；下方显示用户固定的插件摘要。历史不保存查询或参数。
 
-在「快捷指令」中可新建可编辑的本地脚本动作，设置名称、关键词并启用，也可录制独立全局快捷键。新建动作默认停用，与 Finder 右键动作分开。包内快捷指令可设置本地显示名称、关键词和启用状态，实现仍由扩展包提供。工作流在包详情中启停和运行，目前没有清单关键词或单独快捷键字段。
+插件根目录增加可选 `summary.html` 即可适配固定摘要，无需增加 manifest 配置。宿主提供默认样式、明暗主题和只读存储接口，详见[摘要开发指南](plugin-summaries.zh.md)。
+
+「快捷指令」只管理用户创建的本地动作，关键词和全局快捷键任选，也可同时设置。新建动作默认停用，与 Finder 右键动作分开；快捷键直接执行，失败时通过通知和执行日志反馈，不弹出搜索面板。「扩展包」默认展示已安装插件，通过「安装新插件」进入社区安装；插件的显示名称、关键词、启用状态、功能配置和快捷键均在对应插件的「设置」中管理。插件快捷键直接打开或唤起独立窗口，无界面的插件功能直接执行。工作流仍在包详情中启停和运行，目前没有清单关键词或单独快捷键字段。
 
 ### 工具面板与普通独立窗口
 
@@ -57,8 +59,8 @@ await anywhere.clipboard.writeText('你好');
 
 | 接口 | 返回与语义 |
 |---|---|
-| `onEnter(callback)` | 就绪后交付一次上下文，晚订阅仍收到；返回取消订阅函数 |
-| `getInvocation()` | Promise，返回同一上下文对象 |
+| `onEnter(callback)` | 首次进入和已有窗口再次激活时交付上下文，晚订阅收到当前上下文；返回取消订阅函数 |
+| `getInvocation()` | Promise，返回最新调用上下文；持续处理通知等新调用应使用 `onEnter` |
 | `workflow.context()` | Promise，返回 `{active, input}`；单独打开为 `{active: false, input: null}` |
 | `workflow.complete(output)` | 当前交互工作流步骤提交一次 JSON 结果，宿主决定下一步 |
 | `config.get()` | Promise，当前动作的普通配置字典，值为字符串；不返回密码 |
@@ -66,8 +68,10 @@ await anywhere.clipboard.writeText('你好');
 | `storage.set(key, value)` / `remove(key)` | Promise，写入或删除插件级 JSON 数据 |
 | `clipboard.writeText(text)` | Promise，需要 `clipboard.write` |
 | `tasks.run(input)` | Promise，返回任务句柄，需要 `task.run` 和本动作的 `script` |
+| `documents.*` / `launcher.*` | 文件与动态搜索服务，分别需要 `documents` / `launcher.entries`；见[宿主服务](plugin-services.zh.md) |
+| `notifications.status()` / `replace(reminders)` | 权限查询、全量同步通知及按钮，需要 `notifications`；见[通知指南](plugin-notifications.zh.md) |
 
-上下文包含 `apiVersion`、`invocationID`、`actionID`、`source`（`launcher` / `finder`）、`query`、`argument`、`paths`、`finderPath` 和可选 `variant`。`actionID` 是安装后的动作 UUID，不是清单中的局部动作 ID。搜索调用的 `paths` 为空；Finder 调用的查询和参数为空。`finderPath` 为捕获的 Finder 当前目录，无法获取时回退用户主目录；脚本对应变量为 `ANYWHERE_FINDER_PATH`。一次调用中的上下文不可变。
+上下文包含 `apiVersion`、`invocationID`、`actionID`、`source`（`launcher` / `finder`）、`query`、`argument`、`paths`、`finderPath`，以及可选 `variant` 和 `notification`。`notification` 是通知按钮事件 `{id,itemID,actionID}`，处理与去重见[通知指南](plugin-notifications.zh.md#4-处理按钮回调)。上下文顶层的 `actionID` 是安装后的动作 UUID，不是清单中的局部动作 ID；事件中的 `actionID` 则是插件声明的按钮 ID。搜索调用的 `paths` 为空；Finder 调用的查询和参数为空。`finderPath` 为捕获的 Finder 当前目录，无法获取时回退用户主目录；脚本对应变量为 `ANYWHERE_FINDER_PATH`。一次调用中的上下文不可变，再次激活会交付新的上下文。
 
 每个请求由宿主绑定当前页面、会话和插件身份。Promise 失败带 `message` 与稳定 `code`：`invalidArguments`、`denied`、`sessionClosed`、`busy`、`failed`、`timedOut`、`cancelled`、`outputLimit`、`storageLimit`。单次消息及返回值上限 1 MiB，超限报错。会话结束后不得继续使用旧句柄。
 

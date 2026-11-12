@@ -88,6 +88,7 @@ final class AppState: ObservableObject {
         configError = nil
         pruneOrphanIcons()
         pushSnapshot()
+        PluginLauncherController.shared.reloadActionHotKeys()
     }
 
     /// 外部进程(AI / CLI / 手动)改了 config.json 时重读并广播,无需重启 App。

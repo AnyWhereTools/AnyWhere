@@ -83,6 +83,7 @@ struct ShortcutsScreen: View {
         }
         .onAppear { reload() }
         .onReceive(manager.$packs) { _ in DispatchQueue.main.async { reload() } }
+        .onReceive(AppState.shared.$config) { _ in DispatchQueue.main.async { reload() } }
     }
 
     @ViewBuilder private var detail: some View {
@@ -91,14 +92,18 @@ struct ShortcutsScreen: View {
                 Image(systemName: "command").font(.system(size: 40)).foregroundStyle(.secondary)
                 Text(String(localized: "shortcuts.empty")).font(.headline)
                 Text(String(localized: "shortcuts.emptyHint")).foregroundStyle(.secondary)
-                Button(String(localized: "settings.tab.packs")) { AppState.shared.settingsTab = .packs }
+                Button("新建快捷指令") { create() }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let selected = entries.first(where: { $0.id == selection }),
                   let action = AppState.shared.config.actions.first(where: { $0.id == selected.id && $0.shortcutOnly == true }) {
             ScrollView {
                 PvEditor(action: action, onSave: { saved in
                     AppState.shared.mutateConfig { config in
-                        if let i = config.actions.firstIndex(where: { $0.id == saved.id }) { config.actions[i] = saved }
+                        if let i = config.actions.firstIndex(where: { $0.id == saved.id }) {
+                            var updated = saved
+                            updated.shortcutHotKey = config.actions[i].shortcutHotKey
+                            config.actions[i] = updated
+                        }
                     }
                     reload()
                 }, onDelete: {
@@ -106,17 +111,13 @@ struct ShortcutsScreen: View {
                     reload()
                 }, basicFields: {
                     ShortcutKeywordEditor(manager: manager, action: action, shortcut: selected)
-                }, advancedFields: {
+
                     PvField("快捷键", leading: true) {
-                        ActionHotKeyRecorder(actionID: action.id, label: action.shortcutHotKey?.label ?? "未设置")
-                            .frame(width: 150, height: 28)
+                        ActionHotKeyRecorder(actionID: action.id)
                     }
                 })
                 .padding(20)
             }.id(selected.id)
-        } else if let selected = entries.first(where: { $0.id == selection }),
-                  let entry = manager.launcherEntry(actionID: selected.id) {
-            ShortcutEditor(manager: manager, entry: entry, shortcut: selected).id(selected.id)
         } else {
             Text(String(localized: "shortcuts.select")).foregroundStyle(.secondary)
         }
@@ -167,26 +168,48 @@ private struct ShortcutKeywordEditor: View {
     }
     private func save() {
         do {
-            try manager.setShortcut(.init(title: action.title, keywords: keywords.components(separatedBy: CharacterSet(charactersIn: ",，"))), actionID: action.id)
+            try manager.setShortcut(.init(title: action.title, keywords: keywords.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : keywords.components(separatedBy: CharacterSet(charactersIn: ",，"))), actionID: action.id)
             message = String(localized: "shortcuts.saved")
         } catch PluginShortcutError.duplicateKeyword(let value) {
             message = String(format: String(localized: "shortcuts.conflict"), value)
+        } catch PluginShortcutError.invalidShortcut {
+            message = String(localized: "shortcuts.invalid")
         } catch { message = error.localizedDescription }
     }
 }
 
-private struct ActionHotKeyRecorder: NSViewRepresentable {
+struct ActionHotKeyRecorder: View {
+    @ObservedObject private var state = AppState.shared
+    let actionID: UUID
+    @State private var error: String?
+
+    var body: some View {
+        HStack {
+            HotKeyButton(actionID: actionID, label: state.config.actions.first { $0.id == actionID }?.shortcutHotKey?.label ?? "未设置")
+                .frame(width: 150, height: 28)
+            if state.config.actions.first(where: { $0.id == actionID })?.shortcutHotKey != nil {
+                Button("清除") {
+                    do { try PluginLauncherController.shared.setActionHotKey(nil, actionID: actionID); error = nil }
+                    catch { self.error = error.localizedDescription }
+                }
+            }
+            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+        }
+    }
+}
+
+private struct HotKeyButton: NSViewRepresentable {
     let actionID: UUID
     let label: String
     func makeNSView(context: Context) -> Recorder { Recorder(actionID: actionID, label: label) }
     func updateNSView(_ view: Recorder, context: Context) { view.actionID = actionID; if !view.recording { view.title = label } }
     final class Recorder: NSButton {
-        var actionID: UUID; var recording = false; var monitor: Any?
+        var actionID: UUID; var recording = false; var monitor: Any?; var previousTitle = "未设置"
         init(actionID: UUID, label: String) { self.actionID = actionID; super.init(frame: .zero); title = label; bezelStyle = .rounded; target = self; action = #selector(begin) }
         required init?(coder: NSCoder) { fatalError() }
         override var acceptsFirstResponder: Bool { true }
         @objc func begin() {
-            guard !recording else { return }; recording = true; title = "请按快捷键…"; window?.makeFirstResponder(self)
+            guard !recording else { return }; previousTitle = title; recording = true; title = "请按快捷键…"; window?.makeFirstResponder(self)
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
                 guard let self, self.recording else { return event }
                 guard self.window?.firstResponder === self else { self.end(); return event }
@@ -201,89 +224,11 @@ private struct ActionHotKeyRecorder: NSViewRepresentable {
                 self.end(keepTitle: true); return nil
             }
         }
-        func end(keepTitle: Bool = false) { recording = false; if let monitor { NSEvent.removeMonitor(monitor); self.monitor = nil }; if !keepTitle { title = "未设置" } }
+        func end(keepTitle: Bool = false) { recording = false; if let monitor { NSEvent.removeMonitor(monitor); self.monitor = nil }; if !keepTitle { title = previousTitle } }
         deinit { if let monitor { NSEvent.removeMonitor(monitor) } }
     }
 }
 
-private struct ShortcutEditor: View {
-    @ObservedObject var manager: PackManager
-    let entry: PluginLauncherEntry
-    @State private var title: String
-    @State private var keywords: String
-    @State private var enabled = false
-    @State private var error: String?
-    @State private var saved = false
-
-    init(manager: PackManager, entry: PluginLauncherEntry, shortcut: PluginSearchEntry) {
-        self.manager = manager; self.entry = entry
-        _title = State(initialValue: shortcut.title)
-        _keywords = State(initialValue: shortcut.keywords.joined(separator: ", "))
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 12) {
-                    ActionIconView(icon: entry.action.icon, size: 44)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(entry.definition.title).font(.title2.weight(.semibold))
-                        Text(manager.packs.first(where: { $0.key == entry.action.packID })?.manifest.name ?? "")
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Toggle(String(localized: "shortcuts.enabled"), isOn: Binding(get: { enabled }, set: setEnabled))
-                        .toggleStyle(.switch).labelsHidden().accessibilityLabel(String(localized: "shortcuts.enabled"))
-                }
-                ShortcutSettingsGroup(String(localized: "shortcuts.name")) {
-                    TextField(String(localized: "shortcuts.name"), text: $title).textFieldStyle(.roundedBorder)
-                }
-                ShortcutSettingsGroup(String(localized: "shortcuts.keywords")) {
-                    TextField("XM, xlog", text: $keywords).textFieldStyle(.roundedBorder)
-                        .accessibilityLabel(String(localized: "shortcuts.keywords"))
-                    Text(String(localized: "shortcuts.keywordsHint")).font(.caption).foregroundStyle(AWColor.label2)
-                }
-                ShortcutSettingsGroup(String(localized: "shortcuts.target")) {
-                    Label(entry.definition.title, systemImage: "shippingbox").foregroundStyle(AWColor.label2)
-                }
-                HStack(spacing: 12) {
-                    AWButton(String(localized: "shortcuts.save"), kind: .primary, size: .sm, action: save)
-                    if saved { Label(String(localized: "shortcuts.saved"), systemImage: "checkmark").foregroundStyle(.secondary) }
-                }
-                if let error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
-                ShortcutSettingsGroup("使用方式") {
-                    Label(String(localized: "shortcuts.usage"), systemImage: "magnifyingglass")
-                        .font(.callout).foregroundStyle(AWColor.label2)
-                    Button(String(localized: "plugins.openSearch")) { PluginLauncherController.shared.show() }
-                        .buttonStyle(.link)
-                }
-            }.padding(24)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            do { enabled = try manager.preferences.isEnabled(actionID: entry.id) }
-            catch { self.error = error.localizedDescription }
-        }
-        .onChange(of: title) { _ in saved = false }
-        .onChange(of: keywords) { _ in saved = false }
-    }
-
-    private func setEnabled(_ value: Bool) {
-        do { try manager.setLauncherEnabled(value, actionID: entry.id); enabled = value; error = nil }
-        catch { self.error = error.localizedDescription }
-    }
-
-    private func save() {
-        do {
-            try manager.setShortcut(.init(title: title, keywords: keywords.components(separatedBy: CharacterSet(charactersIn: ",，"))), actionID: entry.id)
-            error = nil; saved = true
-        } catch PluginShortcutError.duplicateKeyword(let keyword) {
-            error = String(format: String(localized: "shortcuts.conflict"), keyword)
-        } catch PluginShortcutError.invalidShortcut {
-            error = String(localized: "shortcuts.invalid")
-        } catch { self.error = error.localizedDescription }
-    }
-}
 
 
 // Shared group chrome for custom actions and installed plugin shortcuts.

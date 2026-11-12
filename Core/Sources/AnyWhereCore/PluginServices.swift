@@ -26,24 +26,77 @@ public struct PluginLink: Codable, Equatable, Sendable {
 
 public struct PluginReminder: Codable, Equatable, Sendable {
     public enum Recurrence: String, Codable, Sendable { case none, daily, weekly }
+    public enum Presentation: String, Codable, Sendable { case system, panel }
+    public struct Action: Codable, Equatable, Sendable {
+        public struct Option: Codable, Equatable, Sendable {
+            public var id: String
+            public var title: String
+        }
+        public var id: String
+        public var title: String
+        public var options: [Option]?
+        public var background: Bool?
+    }
     public var id: String
     public var title: String
     public var body: String
     /// Seconds since Unix epoch; repeating reminders use its local time/weekday.
     public var date: Double
     public var recurrence: Recurrence
+    public var presentation: Presentation?
+    public var actions: [Action]?
+    public var usesPanel: Bool { presentation == .panel }
+    public func nextDate(after date: Date, calendar: Calendar = .current) -> Date? {
+        let source = Date(timeIntervalSince1970: self.date)
+        if recurrence == .none { return source > date ? source : nil }
+        let fields: Set<Calendar.Component> = recurrence == .weekly ? [.weekday, .hour, .minute, .second] : [.hour, .minute, .second]
+        return calendar.nextDate(after: date, matching: calendar.dateComponents(fields, from: source), matchingPolicy: .nextTime)
+    }
     public func validate() throws {
         try PluginServiceStore.validateID(id)
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, title.utf8.count <= 512,
               body.utf8.count <= 4096, date.isFinite, date > 0, date < 32503680000 else {
             throw PluginError(.invalidArguments, "Invalid reminder.")
         }
+        let actions = actions ?? []
+        guard actions.count <= 2, Set(actions.map(\.id)).count == actions.count else {
+            throw PluginError(.invalidArguments, "At most two unique notification actions.")
+        }
+        var identifiers = Set(actions.map(\.id))
+        for action in actions {
+            try PluginServiceStore.validateID(action.id)
+            guard !action.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  action.title.utf8.count <= 128, !action.title.contains("\0") else {
+                throw PluginError(.invalidArguments, "Invalid notification action title.")
+            }
+            guard usesPanel || (action.options == nil && action.background != true) else {
+                throw PluginError(.invalidArguments, "Menus and background actions require panel presentation.")
+            }
+            if let options = action.options {
+                guard (1...6).contains(options.count) else { throw PluginError(.invalidArguments, "Expected 1–6 action options.") }
+                for option in options {
+                    try PluginServiceStore.validateID(option.id)
+                    guard identifiers.insert(option.id).inserted,
+                          !option.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                          option.title.utf8.count <= 128, !option.title.contains("\0") else {
+                        throw PluginError(.invalidArguments, "Invalid or duplicate action option.")
+                    }
+                }
+            }
+        }
+    }
+    public func action(for id: String) -> Action? {
+        actions?.first { $0.options == nil ? $0.id == id : $0.options!.contains { $0.id == id } }
     }
 }
 
 /// Host-owned service data is separate from arbitrary plugin storage keys.
 public final class PluginServiceStore {
-    private struct State: Codable { var links: [PluginLink] = []; var reminders: [PluginReminder] = [] }
+    private struct State: Codable {
+        var links: [PluginLink] = []
+        var reminders: [PluginReminder] = []
+        var presented: [String: Double]?
+    }
     private let file: PluginJSONFile<State>
     public init(directory: URL) {
         file = PluginJSONFile(directory: directory, name: "services.json", limit: 1024 * 1024, empty: { State() })
@@ -56,6 +109,14 @@ public final class PluginServiceStore {
     }
     public func links() throws -> [PluginLink] { try file.read().links }
     public func reminders() throws -> [PluginReminder] { try file.read().reminders }
+    public func lastPresented(_ id: String) throws -> Double? { try file.read().presented?[id] }
+    public func markPresented(_ id: String, date: Date) throws {
+        try file.update { state in
+            guard state.reminders.contains(where: { $0.id == id }) else { return }
+            if state.presented == nil { state.presented = [:] }
+            state.presented?[id] = date.timeIntervalSince1970
+        }
+    }
     public func setLinks(_ links: [PluginLink]) throws {
         guard links.count <= 1000, Set(links.map(\.id)).count == links.count else { throw PluginError(.invalidArguments, "At most 1000 unique websites.") }
         try links.forEach { try $0.validate() }
@@ -64,6 +125,10 @@ public final class PluginServiceStore {
     public func setReminders(_ reminders: [PluginReminder]) throws {
         guard reminders.count <= 50, Set(reminders.map(\.id)).count == reminders.count else { throw PluginError(.invalidArguments, "At most 50 active reminders per tool.") }
         try reminders.forEach { try $0.validate() }
-        try file.update { $0.reminders = reminders }
+        try file.update { state in
+            let unchanged = Set(state.reminders.filter { reminders.contains($0) }.map(\.id))
+            state.presented = state.presented?.filter { unchanged.contains($0.key) }
+            state.reminders = reminders
+        }
     }
 }

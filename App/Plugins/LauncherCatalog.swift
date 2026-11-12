@@ -52,7 +52,7 @@ struct LauncherCatalog {
     func search(_ query: String, recent: [UUID]) -> [Match] {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if query.isEmpty {
-            return recent.compactMap { id in entries.first { $0.id == id }.map { Match(entry: $0, argument: "") } }
+            return Array(recent.compactMap { id in entries.first { $0.id == id }.map { Match(entry: $0, argument: "") } }.prefix(4))
         }
         // Title matches precede aliases, which precede descriptions. Keep argument extraction unchanged.
         var matches: [Match] = []

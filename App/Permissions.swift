@@ -63,7 +63,7 @@ enum Permissions {
     // MARK: 通知
 
     static func requestNotifications() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, _ in }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
     // MARK: 一键预请求

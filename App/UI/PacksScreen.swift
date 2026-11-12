@@ -1,14 +1,3 @@
-// PacksScreen.swift — 「扩展包」Tab(方案 A 行展开列表 + 空态)
-//
-// 精确复刻 docs/design/hifi/screen-packs.jsx:
-//   ScreenPacks       顶部操作条 + 分组列表卡(每包一行 PackRow,可展开)/ 空态
-//   PacksHeader       导入 / 浏览社区包 / topic 灰字 / 全部检查更新
-//   PackRow           展开 chevron + AppIcon + 包名 + 有更新蓝点/徽章 + 仓库·SHA + n/m 已启用
-//   ScreenPacksEmpty  居中插画空态
-//
-// 接 PackManager 真实数据:packs / setActionEnabled / uninstall / checkUpdate
-// / cloneUpdate(经 PackUpdateSheet)/ confirmImport(经 PackImportSheet)。
-
 import SwiftUI
 import AppKit
 import AnyWhereCore
@@ -17,11 +6,10 @@ import AnyWhereCore
 
 struct ScreenPacks: View {
     @ObservedObject var packManager: PackManager
-    @ObservedObject private var state = AppState.shared
-
-    @State private var expanded: Set<String> = []
 
     // Sheet 路由
+    @State private var selection: String?
+    @State private var searchText = ""
     @State private var showImport = false
     @State private var showDiscover = false
     @State private var pendingImport: RepoToImport?
@@ -30,17 +18,12 @@ struct ScreenPacks: View {
     @State private var scriptViewer: ScriptViewerTarget?
 
     var body: some View {
-        Group {
-            if packManager.packs.isEmpty {
-                ScreenPacksEmpty(onImport: { showImport = true },
-                                 onBrowse: browse)
-            } else {
-                content
-            }
-        }
+        content
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(AWColor.content)
-        .onAppear { packManager.reload(); checkAll() }
+        .onAppear { ensureSelection(); checkAll() }
+        .onReceive(packManager.$packs) { _ in DispatchQueue.main.async { ensureSelection() } }
+        .onChange(of: searchText) { _ in ensureSelection() }
         .sheet(isPresented: $showImport) {
             PackImportSheet(packManager: packManager) { showImport = false }
         }
@@ -81,49 +64,104 @@ struct ScreenPacks: View {
         }
     }
 
+    private var filteredPacks: [InstalledPack] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return packManager.packs.filter {
+            query.isEmpty || $0.manifest.name.localizedStandardContains(query) || $0.repo.localizedStandardContains(query)
+        }
+    }
+
+    private func ensureSelection() {
+        if !filteredPacks.contains(where: { $0.key == selection }) { selection = filteredPacks.first?.key }
+    }
+
     private var content: some View {
-        VStack(spacing: 0) {
-            PacksHeader(onImport: { showImport = true },
-                        onBrowse: browse,
-                        checking: packManager.checkingUpdates,
-                        onCheckAll: checkAll)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    VStack(spacing: 0) {
-                        ForEach(Array(packManager.packs.enumerated()), id: \.element.id) { i, pack in
-                            if i > 0 { Rectangle().fill(AWColor.separator).frame(height: 0.5) }
-                            PackRow(
-                                pack: pack,
-                                update: packManager.updates[pack.key],
-                                expanded: expanded.contains(pack.key),
-                                onToggleExpand: { toggleExpand(pack.key) },
-                                onSetEnabled: { enabled, actionID in
-                                    packManager.setActionEnabled(enabled, actionID: actionID)
-                                },
-                                onViewScript: { viewScript(pack: pack, action: $0) },
-                                onUpdate: { beginUpdate(pack, available: packManager.updates[pack.key]) },
-                                onOpenRepo: { openRepo(pack) },
-                                onUninstall: { uninstall(pack) }
-                            )
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text(String(localized: "settings.tab.packs")).font(.system(size: 17, weight: .semibold))
+                        Spacer()
+                        Button(action: browse) { Image(systemName: "plus") }
+                            .buttonStyle(.bordered).controlSize(.regular)
+                            .accessibilityLabel("安装新插件")
+                    }
+                    Text("已安装的插件").font(.system(size: 12)).foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                        TextField("搜索插件", text: $searchText)
+                            .textFieldStyle(.plain).accessibilityLabel("搜索插件")
+                        if !searchText.isEmpty {
+                            Button { searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
+                                .buttonStyle(.plain).foregroundStyle(.secondary)
+                                .accessibilityLabel(String(localized: "launcher.clear"))
                         }
                     }
-                    .background(AWColor.card)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(AWColor.hairline, lineWidth: 0.5))
-
-                    Text(footerText)
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(AWColor.label3)
-                        .padding(.horizontal, 4)
-                        .padding(.top, 10)
+                    .padding(8)
+                    .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+                }
+                .padding(18)
+                List(filteredPacks, id: \.key, selection: $selection) { pack in
+                    HStack(spacing: 10) {
+                        PluginIconView(icon: pack.manifest.icon, directory: pack.directory, size: 32)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(pack.manifest.name).fontWeight(.medium).lineLimit(1)
+                            Text(String(format: String(localized: "packs.enabledCount"), pack.enabledCount, pack.totalCount))
+                                .font(.system(size: 11)).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                        if packManager.updates[pack.key] != nil {
+                            Circle().fill(Color.accentColor).frame(width: 6, height: 6)
+                                .accessibilityLabel(String(localized: "packs.updateAvailable"))
+                        }
+                    }
+                    .padding(.vertical, 5).padding(.horizontal, 4)
+                    .listRowBackground(selection == pack.key ? Color.primary.opacity(0.06) : Color.clear)
+                    .tag(pack.key)
+                }
+                .listStyle(.plain).scrollContentBackground(.hidden)
+                .accessibilityIdentifier("packs.installed")
+                Divider()
+                VStack(alignment: .leading, spacing: 8) {
+                    Button(String(localized: "packs.importPack")) { showImport = true }
+                        .buttonStyle(.link)
+                    HStack(spacing: 6) {
+                        if packManager.checkingUpdates { ProgressView().controlSize(.small) }
+                        Button(String(localized: "packs.checkAllUpdates"), action: checkAll)
+                            .buttonStyle(.link).disabled(packManager.checkingUpdates)
+                    }
+                    Text(footerText).font(.system(size: 10)).foregroundStyle(.secondary)
                     if let error = packManager.updateCheckError {
                         Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 14)
+                .padding(18)
             }
+            .frame(width: 260)
+            Divider()
+            Group {
+                if let pack = filteredPacks.first(where: { $0.key == selection }) {
+                    ScrollView {
+                        PackRow(
+                            pack: pack,
+                            update: packManager.updates[pack.key],
+                            onSetEnabled: { packManager.setActionEnabled($0, actionID: $1) },
+                            onViewScript: { viewScript(pack: pack, action: $0) },
+                            onUpdate: { beginUpdate(pack, available: packManager.updates[pack.key]) },
+                            onOpenRepo: { openRepo(pack) },
+                            onUninstall: { uninstall(pack) }
+                        )
+                        .padding(20)
+                    }
+                    .id(pack.key)
+                    .accessibilityIdentifier("packs.detail." + pack.key)
+                } else if packManager.packs.isEmpty {
+                    ScreenPacksEmpty(onImport: { showImport = true }, onBrowse: browse)
+                } else {
+                    Text("没有匹配的插件").foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -143,10 +181,6 @@ struct ScreenPacks: View {
     }
 
     // MARK: 行为
-
-    private func toggleExpand(_ key: String) {
-        if expanded.contains(key) { expanded.remove(key) } else { expanded.insert(key) }
-    }
 
     private func browse() {
         showDiscover = true
@@ -179,7 +213,6 @@ struct ScreenPacks: View {
         if alert.runModal() == .alertFirstButtonReturn {
             do {
                 try packManager.uninstall(pack.key, clearData: clear.state == .on)
-                expanded.remove(pack.key)
             } catch { NSAlert(error: error).runModal() }
         }
     }
@@ -226,44 +259,11 @@ struct RepoToImport: Identifiable {
     let entry: CatalogPack
 }
 
-// MARK: - PacksHeader(顶部操作条)
-
-struct PacksHeader: View {
-    let onImport: () -> Void
-    let onBrowse: () -> Void
-    var checking: Bool = false
-    let onCheckAll: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            AWButton(String(localized: "packs.importPack"), systemImage: "plus", kind: .primary, action: onImport)
-            AWButton(String(localized: "packs.browseCommunity"), systemImage: "magnifyingglass", kind: .plain, action: onBrowse)
-            Text("AnyWhere Bazaar")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(AWColor.label3)
-            Spacer(minLength: 0)
-            if checking {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text(String(localized: "packs.checking")).font(.system(size: 12)).foregroundStyle(AWColor.label2)
-                }
-            } else {
-                AWButton(String(localized: "packs.checkAllUpdates"), systemImage: "arrow.clockwise", size: .sm, action: onCheckAll)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 10)
-    }
-}
-
-// MARK: - PackRow(单包行 + 展开详情)
+// MARK: - PackRow(包信息 + 常驻操作)
 
 struct PackRow: View {
     let pack: InstalledPack
     var update: PackUpdateAvailable?
-    let expanded: Bool
-    let onToggleExpand: () -> Void
     let onSetEnabled: (Bool, UUID) -> Void
     let onViewScript: (MenuAction) -> Void
     let onUpdate: () -> Void
@@ -272,11 +272,10 @@ struct PackRow: View {
 
     @ObservedObject private var state = AppState.shared
     @ObservedObject private var manager = AppState.shared.packManager
-    @State private var configurationAction: MenuAction?
     @State private var configurationError: String?
     @AppStorage("pluginDeveloperMode") private var developerMode = false
 
-    /// 该包的动作(按 sortOrder 稳定排序),用于展开列表 + 启停。
+    /// 该包的动作(按 sortOrder 稳定排序),用于动作列表 + 启停。
     private var actions: [MenuAction] {
         state.config.actions
             .filter { $0.packID == pack.key }
@@ -284,60 +283,43 @@ struct PackRow: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 16) {
             header
-            if expanded { expandedBody }
-        }
-        .sheet(item: $configurationAction) { action in
-            VStack {
-                PackConfigurationForm(actionID: action.id, fields: manager.configurationFields(for: action))
-                Button(String(localized: "plugins.done")) { configurationAction = nil }
-            }.padding(16).frame(minWidth: 480)
+            Divider()
+            controls
         }
     }
 
     private var header: some View {
-        HStack(spacing: 0) {
-            Button(action: onToggleExpand) {
-                HStack(spacing: 10) {
-                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(AWColor.label3)
-                        .frame(width: 12)
-                    AppIcon(pack.manifest.icon, size: 30, hue: .teal)
-                    VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 7) {
-                            Text(pack.manifest.name)
-                                .font(.system(size: 13.5, weight: .semibold))
-                                .foregroundStyle(AWColor.label)
-                            if update != nil {
-                                AWDot()
-                                Badge(String(localized: "packs.updateAvailable"), tone: .accent)
-                            }
-                        }
-                        Text("\(pack.repo) · \(pack.isLocal ? String(localized: "packs.localSource") : String(pack.commitSHA.prefix(12)))")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(AWColor.label2)
+        HStack(spacing: 10) {
+            PluginIconView(icon: pack.manifest.icon, directory: pack.directory, size: 44)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 7) {
+                    Text(pack.manifest.name)
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(AWColor.label)
+                    if update != nil {
+                        AWDot()
+                        Badge(String(localized: "packs.updateAvailable"), tone: .accent)
                     }
-                    Spacer(minLength: 0)
-                    Text(String(format: String(localized: "packs.enabledCount"), pack.enabledCount, pack.totalCount))
-                        .font(.system(size: 12))
-                        .foregroundStyle(AWColor.label2)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 9)
-                .contentShape(Rectangle())
+                Text("\(pack.repo) · \(pack.isLocal ? String(localized: "packs.localSource") : String(pack.commitSHA.prefix(12)))")
+                    .lineLimit(1).truncationMode(.middle)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(AWColor.label2)
             }
-            .buttonStyle(.plain)
+            Spacer(minLength: 0)
+            Text(String(format: String(localized: "packs.enabledCount"), pack.enabledCount, pack.totalCount))
+                .font(.system(size: 12))
+                .foregroundStyle(AWColor.label2)
             if update != nil {
                 AWButton(String(localized: "packs.updateEllipsis"), systemImage: "arrow.down.circle",
                          kind: .primary, size: .sm, action: onUpdate)
-                    .padding(.trailing, 14)
             }
         }
     }
 
-    private var expandedBody: some View {
+    private var controls: some View {
         VStack(alignment: .leading, spacing: 10) {
             // 动作小列表
             VStack(spacing: 0) {
@@ -352,8 +334,8 @@ struct PackRow: View {
                             scale: 0.62)
                         }
                         if manager.launcherEntry(actionID: action.id)?.definition.launcher != nil {
-                            Text(String(localized: "plugins.launcher")).font(.caption)
-                            Toggle(String(localized: "plugins.launcher"), isOn: Binding(get: { (try? manager.preferences.isEnabled(actionID: action.id)) ?? false }, set: { enabled in
+                            Text("启用").font(.caption)
+                            Toggle("启用插件功能", isOn: Binding(get: { (try? manager.preferences.isEnabled(actionID: action.id)) ?? false }, set: { enabled in
                                 do { try manager.setLauncherEnabled(enabled, actionID: action.id); configurationError = nil }
                                 catch { configurationError = error.localizedDescription }
                             })).labelsHidden().toggleStyle(.switch).controlSize(.mini)
@@ -362,8 +344,14 @@ struct PackRow: View {
                             .font(.system(size: 12.5))
                             .foregroundStyle(AWColor.label)
                         Spacer(minLength: 0)
-                        if !manager.configurationFields(for: action).isEmpty {
-                            AWButton(String(localized: "packConfig.title"), kind: .plain, size: .sm) { configurationAction = action }
+                        if let entry = manager.launcherEntry(actionID: action.id) {
+                            if entry.definition.launcher != nil {
+                                AWButton("打开", systemImage: "arrow.up.forward.app", kind: .plain, size: .sm) {
+                                    let invocation = PluginInvocation(actionID: entry.id, source: .launcher, finderPath: FinderDirectory.currentPath())
+                                    PluginLauncherController.shared.open(entry, invocation: invocation, detached: true)
+                                }
+                                .disabled((try? manager.preferences.isEnabled(actionID: action.id)) != true)
+                            }
                         }
                         if case .runScript = action.kind {
                             AWButton(String(localized: "packs.viewScript"), kind: .plain, size: .sm) { onViewScript(action) }
@@ -371,16 +359,13 @@ struct PackRow: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    if let entry = manager.commandEntries().first(where: { $0.id == action.id }), entry.definition.mcp != nil {
-                        PluginMCPSettingsView(manager: manager, entry: entry)
-                            .padding(.horizontal, 12).padding(.vertical, 6)
+                    if let entry = manager.launcherEntry(actionID: action.id) {
+                        PluginSettingsView(manager: manager, entry: entry)
+                            .id(action.id)
+                            .padding(.vertical, 12)
                     }
                 }
             }
-            .background(AWColor.card)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(AWColor.hairline, lineWidth: 0.5))
 
             if !pack.manifest.workflows.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
@@ -422,14 +407,6 @@ struct PackRow: View {
                 AWButton(String(localized: "packs.uninstallEllipsis"), systemImage: "trash", kind: .danger, size: .sm, action: onUninstall)
             }
         }
-        .padding(.leading, 46)
-        .padding(.trailing, 14)
-        .padding(.top, 2)
-        .padding(.bottom, 12)
-        .background(AWColor.content)
-        .overlay(alignment: .top) {
-            Rectangle().fill(AWColor.separator).frame(height: 0.5)
-        }
     }
 }
 
@@ -460,8 +437,8 @@ struct ScreenPacksEmpty: View {
                     .frame(maxWidth: 360)
             }
             HStack(spacing: 10) {
-                AWButton(String(localized: "packs.importPack"), systemImage: "plus", kind: .primary, action: onImport)
-                AWButton(String(localized: "packs.browseCommunity"), systemImage: "magnifyingglass", action: onBrowse)
+                AWButton("安装新插件", systemImage: "plus", kind: .primary, action: onBrowse)
+                AWButton(String(localized: "packs.importPack"), systemImage: "square.and.arrow.down", action: onImport)
             }
             .padding(.top, 2)
         }

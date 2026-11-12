@@ -15,7 +15,13 @@ struct CatalogPack: Identifiable, Decodable, Equatable {
 
     var repo: String { String(repository.dropFirst("https://github.com/".count)) }
 
+    var iconURL: URL? {
+        guard (try? validate()) != nil, let path = PackIcon.imagePath(icon) else { return nil }
+        return URL(string: "https://raw.githubusercontent.com/" + repo + "/" + revision + "/")?.appendingPathComponent(path)
+    }
+
     func validate() throws {
+        try PackIcon.validate(icon)
         guard id.count <= 100, id.range(of: "^[a-z0-9]+([.-][a-z0-9]+)*$", options: .regularExpression) != nil,
               PackCatalog.canonicalRepository(repository) == repository.lowercased(),
               revision.range(of: "^[0-9a-f]{40}$", options: .regularExpression) != nil,

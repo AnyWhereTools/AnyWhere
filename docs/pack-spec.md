@@ -1,6 +1,6 @@
 # AnyWhere Extension Pack Specification
 
-English · [简体中文](pack-spec.zh.md) · [Back to home](../README.md)
+English · [简体中文](pack-spec.zh.md) · [Developer docs](README.md) · [Back to home](../README.md)
 
 An **extension pack** is a folder with a `manifest.json` at its root and the scripts it
 declares. Import it from a Git repository or directly from a local folder, without Git.
@@ -63,6 +63,16 @@ The JSONC example below includes explanatory comments. Actual manifests must be 
 
 Unknown fields are ignored (forward-compatible). All optional fields fall back to the
 defaults above.
+
+### `icon` — system symbol or custom artwork
+
+Both pack and action `icon` accept an SF Symbol name (such as `"checklist"`) or an image path relative to the pack (such as `"assets/icon.png"`). Bundle the image with the plugin: absolute paths, remote URLs and symlinks escaping the pack are rejected. The community list fetches artwork from the same pinned repository revision.
+
+Supported formats: PNG, JPEG, WebP, GIF, BMP, TIFF, HEIC/HEIF, ICO/ICNS, static SVG and PDF. Each file must be at most **1 MiB**, with each dimension at most **4096** (pixels for raster images, canvas units for vectors). A 256×256 or 512×512 square image is recommended; transparency is preserved.
+
+Artwork is centered proportionally in a fixed square, with consistent rounded corners, border and display sizes. The host creates a 128×128 static thumbnail; Finder receives a 36×36 PNG. Animated images use the first frame; PDFs use the first page. SVG must contain standalone static graphics without scripts, animation, stylesheets, inline style or external resources. Export styles as presentation attributes or use PNG.
+
+Missing, invalid or oversized artwork blocks import and update. Existing SF Symbols remain supported. Image paths require a client containing this feature; older clients interpret the path as a symbol name.
 
 ### `schemaVersion` — select the required feature level
 

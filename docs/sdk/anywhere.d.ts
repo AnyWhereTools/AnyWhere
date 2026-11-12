@@ -11,6 +11,8 @@ interface PluginInvocation {
   /** Captured Finder directory; falls back to the user's home directory. */
   finderPath: string;
   variant?: string;
+  /** Button event; plugins own business effects and persist id to ignore replays. */
+  notification?: {id: string; itemID: string; actionID: string};
 }
 interface PluginFailure {
   code: 'invalidArguments' | 'denied' | 'sessionClosed' | 'busy' | 'failed' |
@@ -61,13 +63,27 @@ interface AnyWhereSDK {
   };
   /** `notifications` capability. Requires the owning tool's launcher switch to stay enabled. */
   notifications: {
+    readonly presentations: readonly ('system' | 'panel')[];
+    readonly supportsActions: true;
+    readonly supportsInlineActions: true;
+    /** Panel background actions run in a temporary, invisible plugin page. Register after loading data.
+     * Resolve after persisting and syncing; throw to keep the card open with a retryable error.
+     * Handler must finish within 20 seconds and deduplicate the event id. Do not open dialogs.
+     */
+    onAction(callback: (event: NonNullable<PluginInvocation['notification']>) => Promise<void>): () => void;
     status(): Promise<'authorized' | 'denied' | 'notDetermined'>;
     /** Replaces this action's desired reminders (<=50); [] cancels them.
      * date is Unix seconds. daily/weekly use the date's local time/weekday, starting at next match.
      * Persist application data first. Check authorization/errors; success is not a promise of visible delivery.
      * Notification click opens this action with invocation.argument = reminder.id.
      */
-    replace(reminders: {id: string; title: string; body: string; date: number; recurrence: 'none' | 'daily' | 'weekly'}[]):
+    replace(reminders: {id: string; title: string; body: string; date: number; recurrence: 'none' | 'daily' | 'weekly';
+      /** Default system. Panel requires the host running; overdue single panels resume at host start. */
+      presentation?: 'system' | 'panel';
+      /** Up to two unique actions. Click activates the plugin with invocation.notification. */
+      actions?: {id: string; title: string; background?: boolean;
+        /** Panel only: 1–6 flat menu options. Selected option id is delivered as actionID. */
+        options?: {id: string; title: string}[]}[]}[]):
       Promise<{authorization: 'authorized' | 'denied' | 'notDetermined'; errors: string[]}>;
   };
   /** Fires on initial entry and when an existing window is activated (e.g. notification click). */

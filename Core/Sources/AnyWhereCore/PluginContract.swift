@@ -26,6 +26,15 @@ public enum PluginActionIdentity {
     }
 }
 
+public struct PluginNotificationResponse: Codable, Equatable, Sendable {
+    public let id: String
+    public let itemID: String
+    public let actionID: String
+    public init(id: String, itemID: String, actionID: String) {
+        self.id = id; self.itemID = itemID; self.actionID = actionID
+    }
+}
+
 public struct PluginInvocation: Codable, Equatable, Sendable {
     public enum Source: String, Codable, Sendable { case launcher, finder }
     public let apiVersion: Int
@@ -37,12 +46,14 @@ public struct PluginInvocation: Codable, Equatable, Sendable {
     public let paths: [String]
     public let variant: String?
     public let finderPath: String
-    private enum CodingKeys: String, CodingKey { case apiVersion, invocationID, actionID, source, query, argument, paths, variant, finderPath }
+    public let notification: PluginNotificationResponse?
+    private enum CodingKeys: String, CodingKey { case apiVersion, invocationID, actionID, source, query, argument, paths, variant, finderPath, notification }
     public init(actionID: UUID, source: Source, query: String = "", argument: String = "",
                 paths: [String] = [], variant: String? = nil,
-                finderPath: String = FileManager.default.homeDirectoryForCurrentUser.path) {
+                finderPath: String = FileManager.default.homeDirectoryForCurrentUser.path, notification: PluginNotificationResponse? = nil) {
         apiVersion = 1; invocationID = UUID(); self.actionID = actionID; self.source = source
         self.query = query; self.argument = argument; self.paths = paths; self.variant = variant; self.finderPath = finderPath
+        self.notification = notification
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -54,6 +65,7 @@ public struct PluginInvocation: Codable, Equatable, Sendable {
         argument = try c.decode(String.self, forKey: .argument)
         paths = try c.decode([String].self, forKey: .paths)
         variant = try c.decodeIfPresent(String.self, forKey: .variant)
+        notification = try c.decodeIfPresent(PluginNotificationResponse.self, forKey: .notification)
         finderPath = try c.decodeIfPresent(String.self, forKey: .finderPath)
             ?? FileManager.default.homeDirectoryForCurrentUser.path
     }

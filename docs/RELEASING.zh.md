@@ -2,7 +2,7 @@
 
 [English](RELEASING.md) · 简体中文 · [返回首页](../README.zh.md)
 
-AnyWhere 的分发产物是经过 **Developer ID 签名和公证的 `.dmg`**，使用 **Sparkle** 自动更新。本文说明首次配置和每次发布的操作。
+AnyWhere 支持经过 **Developer ID 签名和公证的 `.dmg`**，使用 **Sparkle** 自动更新；也可明确选择未经公证、不提供自动更新的 ad-hoc 构建。本文说明首次配置和每次发布的操作。
 
 分发需要付费的 **Apple Developer Program** 会员资格和 **Developer ID Application** 证书。用于本地开发的 Apple Development 证书不能替代分发签名和公证所需的证书。
 
@@ -82,7 +82,15 @@ make release VERSION=1.0.0
 
 ### 通过 CI 发布
 
-先提交待发布改动，再创建并推送版本标签：
+先提交并推送待发布改动，再手动运行工作流：
+
+```bash
+gh workflow run release.yml --ref main -f version=0.1.0 -f unsigned=false
+```
+
+缺少签名凭据时，可明确设置 `-f unsigned=true`。此模式构建同时支持 Apple Silicon 和 Intel 的通用应用，验证 ad-hoc 签名，发布 DMG 和 `SHA256SUMS.txt`，并在 Release 说明中注明未公证及 Gatekeeper 限制；不会生成或更新 Sparkle 更新源。工作流会在实际检出的提交上创建 `v<version>` 标签；若 Release 已存在，或同名标签指向其他提交，则拒绝发布。
+
+也可创建并推送版本标签，触发签名发布：
 
 ```bash
 git tag v1.0.0
@@ -91,7 +99,7 @@ git push origin v1.0.0
 
 发布脚本从标签取得版本号并覆盖构建参数 `MARKETING_VERSION`，同时生成递增构建号 `CURRENT_PROJECT_VERSION`。无需手工替换 `App/Info.plist` 中的构建变量占位符。
 
-`release.yml` 会构建、签名、公证，创建包含 DMG 的 GitHub Release，重新生成 `appcast.xml` 并推送到 `main`。Sparkle 客户端通过 `SUFeedURL` 获取更新。
+签名模式下，`release.yml` 会构建、签名、公证，创建包含 DMG 的 GitHub Release，重新生成 `appcast.xml` 并推送到 `main`。Sparkle 客户端通过 `SUFeedURL` 获取更新。
 
 ## 发布检查
 
