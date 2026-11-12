@@ -113,8 +113,8 @@ jobs:
             -quiet
           APP=build/Build/Products/Release/AnyWhere.app
           codesign --verify --deep --strict "$APP"
-          lipo -verify_arch arm64 x86_64 "$APP/Contents/MacOS/AnyWhere"
-          lipo -verify_arch arm64 x86_64 "$APP/Contents/MacOS/anywhere-mcp"
+          lipo "$APP/Contents/MacOS/AnyWhere" -verify_arch arm64 x86_64
+          lipo "$APP/Contents/MacOS/anywhere-mcp" -verify_arch arm64 x86_64
           mkdir -p build/release/dmg
           ditto "$APP" build/release/dmg/AnyWhere.app
           ln -s /Applications build/release/dmg/Applications
