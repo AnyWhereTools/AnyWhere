@@ -135,7 +135,7 @@ AnyWhere 把应用、脚本和插件工具放进同一个键盘操作入口。�
 
 ## 安装 / 从源码构建
 
-环境：macOS 13+、Xcode 16.3+（MCP 辅助程序 SDK 需要 Swift 6.1）、Homebrew（安装 `xcodegen`）。
+环境：macOS 13+、Xcode 26+（可选的 Liquid Glass 背景需要 macOS 26 SDK）、Homebrew（安装 `xcodegen`）。
 
 安装包发布后可从 [GitHub Releases](https://github.com/AnyWhereTools/AnyWhere/releases) 获取，安装前请查看对应版本的签名与公证说明。
 

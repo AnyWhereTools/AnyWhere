@@ -204,7 +204,7 @@ importing them. Current plugin discovery uses the [Bazaar registry](https://gith
 
 ## Install / build from source
 
-Requirements: macOS 13+, Xcode 16.3+ (Swift 6.1 for the MCP helper SDK), Homebrew (for `xcodegen`).
+Requirements: macOS 13+, Xcode 26+ (macOS 26 SDK for the optional Liquid Glass background), Homebrew (for `xcodegen`).
 
 Packaged downloads, when available, are listed under [GitHub Releases](https://github.com/AnyWhereTools/AnyWhere/releases).
 Check each release's signing and notarization notes before installing.
