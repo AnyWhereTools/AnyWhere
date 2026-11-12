@@ -1,27 +1,45 @@
 # AnyWhere
 
-**完全掌控 macOS Finder 的右键菜单。**
+**集快捷启动、插件工具和 Finder 右键管理于一体的 macOS 应用，支持本机 MCP 调用。**
 
 [English](README.md) · 简体中文
 
-开发插件或参与主工程：[开发者文档](docs/README.zh.md) · [通知与操作按钮](docs/plugin-notifications.zh.md)
+[插件集市](https://github.com/AnyWhereTools/anywhere-bazaar) · [开发者文档](docs/README.zh.md) · [本机 MCP](docs/mcp.zh.md) · [版本发布](https://github.com/AnyWhereTools/AnyWhere/releases)
 
-AnyWhere 是一个**脚本优先**、开源(MIT)的菜单栏应用:加你自己的右键动作、管理别的工具碰不到的系统菜单项、安装社区「扩展包」——而且不会反复弹授权框。以 Developer ID 形式分发(非沙盒主 App + 沙盒 Finder Sync 扩展),最低 macOS 13 Ventura,界面支持 **English / 简体中文**。
+AnyWhere 把应用、脚本和插件工具放进同一个键盘操作入口。按 `Control+Option+Space` 搜索并打开工具，管理 Finder 右键动作，也可以让 MCP 客户端调用你明确授权的插件命令。插件可提供独立界面、本地数据、提醒和搜索首页摘要，无需另做一个原生 App。
+
+项目采用 **MIT** 协议，基于 **SwiftUI + Finder Sync + WebKit**，最低支持 **macOS 13 Ventura**，界面支持 **English / 简体中文**。主 App 非沙盒，Finder 扩展运行在沙盒中。
+下文介绍当前源码能力；使用安装包时，请同时查看对应版本的发布说明。
 
 ---
 
-## 为什么用 AnyWhere
+## 能做什么
 
-市面上的右键工具(右键超人 / MouseBoost / 超级右键 / Service Station 等)都走 App Store 沙盒,**只能管理自己注入的菜单项**。AnyWhere 走 Developer ID、跳出沙盒,因此能做到沙盒结构上做不到的事:
+| 入口 | 能力 |
+| --- | --- |
+| 快捷启动 | 按名称、别名、全拼或首字母搜索应用、插件和本地快捷指令 |
+| 插件工具 | HTML/CSS/JS 页面、独立窗口、本地存储和可取消的后端任务 |
+| Finder 右键 | 可编辑的 zsh 动作、系统快速操作／服务显隐、第三方扩展开关 |
+| 提醒与摘要 | 插件定义的系统通知或提醒浮窗，以及固定在搜索首页的摘要 |
+| 自动化 | 同包工作流，以及通过内置 stdio MCP 服务调用已授权的插件命令 |
 
-| 能力 | 沙盒竞品 | AnyWhere |
-|------|---------|---------|
-| 注入自定义脚本动作 | 部分支持 | ✓ 脚本优先,全可配置 |
-| 开关系统 Quick Actions / 服务 | ✗ | ✓ 读写 `pbs` 域 |
-| 开关第三方 Finder 扩展 | ✗ | ✓ `pluginkit` |
-| 安装扩展包(Git 仓库或本地文件夹) | ✗ | ✓ 见 [扩展包规范](docs/pack-spec.zh.md) |
+**脚本优先，按需扩展。** 内置 Finder 动作也是可编辑的 zsh 脚本。插件可从 Git 仓库或本地文件夹导入，审阅后再启用需要的入口。
 
-**核心理念是脚本优先**:连内置能力都是可编辑的 zsh 脚本——预设 = 出厂脚本,随时改、删、恢复。
+## 快速开始
+
+1. 按下方[安装／构建说明](#安装--从源码构建)启动 AnyWhere，完成首次引导；需要右键动作时启用 Finder 扩展。
+2. 打开「扩展包」，浏览[插件集市](https://github.com/AnyWhereTools/anywhere-bazaar)，或导入 Git URL／本地文件夹，审阅文件后安装。
+3. 在包详情中启用所需的「搜索」或「右键」入口；两者独立控制，导入后默认停用。
+4. 按 `Control+Option+Space` 搜索工具并回车打开，再按需设置插件配置、固定摘要或开启 MCP 授权。
+
+### 可以先试这些插件
+
+| 插件 | 用途 |
+| --- | --- |
+| [Todo](https://github.com/AnyWhereTools/anywhere-todo) | 待办列表、截止日期与提醒 |
+| [JSON Tools](https://github.com/AnyWhereTools/anywhere-json-tools) | JSON 编辑、格式化与草稿保存 |
+| [Quicklinks](https://github.com/AnyWhereTools/anywhere-quicklinks) | 网站搜索与 URL 模板快捷入口 |
+| [Tool Chain Demo](https://github.com/AnyWhereTools/anywhere-tool-chain-demo) | 接口响应 → 节点选择 → TypeScript 的交互工具链 |
 
 ---
 
@@ -47,13 +65,25 @@ AnyWhere 是一个**脚本优先**、开源(MIT)的菜单栏应用:加你自己�
 
 按 `Control+Option+Space` 唤起搜索，输入插件名称或别名，回车在同一窗口打开插件自带的 HTML/CSS/JS 界面。快捷键可在通用设置修改或停用，也可从菜单栏打开。扩展包详情中的「搜索」与「右键」开关独立控制，导入后均默认停用。
 
-插件可保存独立数据、调用剪贴板，并通过可取消任务运行包内脚本或 Go/Rust 二进制，无需内置 Node。详见[自定义 UI 开发文档](docs/plugin-ui.zh.md)和[可导入的文本工具示例](examples/ui-tool-pack/README.zh.md)。这部分使用清单版本 4；版本 1–3 的包继续兼容。
+插件可保存独立数据、调用剪贴板，并通过可取消任务运行包内脚本或 Go/Rust 二进制，无需内置 Node。详见[自定义 UI 开发文档](docs/plugin-ui.zh.md)和[可导入的文本工具示例](examples/ui-tool-pack/README.zh.md)。UI 页面使用清单版本 4 或更高版本；版本 1–3 的原有包能力继续兼容。
 
 搜索还支持全拼、拼音首字母、已启用的自建快捷指令、同包工作流和已安装应用。「快捷指令」可创建本地脚本，设置名称、关键词和独立全局快捷键，与 Finder 右键动作分开。
 
 工具页面可在普通独立窗口打开，带原生窗口按钮及工具栏重载。独立打开／重载会新建会话，需要保留的草稿应写入宿主存储。关闭工具面板会结束会话；独立窗口在切换其他应用后仍保留。详见[窗口生命周期](docs/plugin-ui.zh.md)。
 
 真实脚本组合见[剪贴板 JSON 工作流](examples/tool-panel-demo/README.zh.md)，交互 A → B → C 见[接口响应转 TypeScript](examples/tool-chain-demo/README.zh.md)。导入审阅后，在包详情中启用所需工具和工作流。目前工作流只能引用**同包工具**；跨开发者、跨扩展包组合的[设计与实施计划](docs/cross-pack-workflows.zh.md)明确标为尚未实现。
+
+### 提醒与搜索首页摘要
+
+插件可调度 macOS 系统通知或 AnyWhere 提醒浮窗，并提供「推迟」「确认完成」等按钮。插件负责保存业务数据和处理按钮，AnyWhere 负责调度与展示。浮窗需要 AnyWhere 保持运行，插件页面可以关闭。详见[通知与操作按钮](docs/plugin-notifications.zh.md)。
+
+提供 `summary.html` 的插件可固定到搜索首页，读取自身已保存的数据展示摘要，点击后打开完整工具。详见[搜索首页摘要](docs/plugin-summaries.zh.md)。
+
+### 本机 MCP 与插件命令
+
+内置 `anywhere-mcp` 辅助程序通过 stdio 向 MCP 客户端提供已明确授权的插件命令。在插件设置中开启「允许通过 AnyWhere MCP 调用」，并将 `/Applications/AnyWhere.app/Contents/MacOS/anywhere-mcp` 注册为客户端的服务程序；安装位置不同时调整路径。**使用期间 AnyWhere 需保持运行。**
+
+`list` 工具可查询已授权插件及其操作参数。插件通过清单版本 5 声明导出的命令，已安装的插件必须包含这些声明才能被调用。关闭授权后，后续调用会被阻止。本机 MCP 不提供远程服务，同一 macOS 用户下的其他进程也能调用已授权功能。完整接入方法与命令契约见[本机 MCP 文档](docs/mcp.zh.md)。
 
 ### 扩展包导入
 
@@ -95,7 +125,7 @@ AnyWhere 是一个**脚本优先**、开源(MIT)的菜单栏应用:加你自己�
 | `open-parent.sh` / `open-enclosing.sh` | 前往上一层级目录 | 在当前 Finder 窗口内上一层;浏览器上传框里发 `⌘↑` |
 
 专用能力可通过**可选扩展包**添加。以下是上游参考项目，导入前需将脚本适配为
-`ANYWHERE_*` 环境变量；AnyWhere 的社区发现使用 `anywhere-pack` 标签：
+`ANYWHERE_*` 环境变量；当前 AnyWhere 的插件发现使用 [Bazaar 注册表](https://github.com/AnyWhereTools/anywhere-bazaar)：
 
 - **[Developer Pack](https://github.com/Hibrielle/menumate-dev-pack)** —— 在终端/编辑器打开(遵从你的默认终端/编辑器)。
 - **[Image Pack](https://github.com/Hibrielle/menumate-image-pack)** —— 图片转换 ▸ png/jpeg/heic/tiff。
@@ -105,7 +135,9 @@ AnyWhere 是一个**脚本优先**、开源(MIT)的菜单栏应用:加你自己�
 
 ## 安装 / 从源码构建
 
-环境:macOS 13+、Xcode 15+(String Catalog 所需)、Homebrew(装 `xcodegen`)。
+环境：macOS 13+、Xcode 16.3+（MCP 辅助程序 SDK 需要 Swift 6.1）、Homebrew（安装 `xcodegen`）。
+
+安装包发布后可从 [GitHub Releases](https://github.com/AnyWhereTools/AnyWhere/releases) 获取，安装前请查看对应版本的签名与公证说明。
 
 ```bash
 make bootstrap   # 安装 xcodegen + 拷贝本地签名配置
@@ -116,6 +148,8 @@ make run         # 构建并启动
 ```
 
 随后启用 Finder 扩展(引导会带你到系统设置,或 `pluginkit -e use -i com.anywhere.app.FinderExtension`),并完成一次性授权。签名、公证和发布操作见[发布流程](docs/RELEASING.zh.md)。
+
+正式签名、公证需要 Developer ID 凭据；GitHub 发布流程也支持显式选择临时签名构建，该模式不含公证和自动更新。未公证的本地或临时签名构建首次启动可能被 Gatekeeper 阻止，可右键 App 选择「打开」并确认，或对可信构建执行 `xattr -dr com.apple.quarantine /path/to/AnyWhere.app`。
 
 ## 脚本环境契约
 
@@ -143,15 +177,18 @@ AnyWhere 使用独立的 `com.anywhere.app` 标识，配置保存在
 
 | Target | 形态 | 沙盒 | 职责 |
 |--------|------|------|------|
-| AnyWhere | SwiftUI 菜单栏 App(`LSUIElement`) | 否 | 配置、动作执行、系统菜单管理、扩展包 |
+| AnyWhere | SwiftUI 菜单栏 App(`LSUIElement`) | 否 | 搜索启动、插件界面、提醒、动作执行、系统菜单管理、扩展包 |
 | FinderExtension | `FIFinderSync` 扩展 | 是 | 画菜单、转发点击 |
-| AnyWhereCore | 本地 Swift Package | — | 模型、配置编解码、规则匹配(单测覆盖) |
+| AnyWhereMCP | 内置 `anywhere-mcp` 可执行程序 | 否 | 将 stdio MCP 调用转发给已授权的宿主命令 |
+| AnyWhereCore | 本地 Swift Package | — | 模型、配置、规则匹配、命令校验与本机 IPC（单测覆盖） |
 
 扩展**不读任何文件**:菜单数据由主 App 经 `DistributedNotificationCenter` 分块推送,无 App Group 容器——这是消除反复授权弹窗的关键。
 
 ## 文档与贡献
 
 - [UI、窗口与工作流 SDK](docs/plugin-ui.zh.md) · [TypeScript 类型声明](docs/sdk/anywhere.d.ts)
+- [通知与提醒按钮](docs/plugin-notifications.zh.md) · [宿主服务](docs/plugin-services.zh.md)
+- [本机 MCP 与插件命令](docs/mcp.zh.md) · [搜索首页摘要](docs/plugin-summaries.zh.md)
 - [脚本工作流 Demo](examples/tool-panel-demo/README.zh.md) · [交互工具链 Demo](examples/tool-chain-demo/README.zh.md)
 - [跨包工作流开发设计与实施计划——尚未实现](docs/cross-pack-workflows.zh.md)
 - [扩展包规范](docs/pack-spec.zh.md) · [基础示例包](examples/example-pack/README.zh.md) · [Xlog Decoder 包](examples/xlog-decoder-pack/README.zh.md)

@@ -1,35 +1,50 @@
 # AnyWhere
 
-**Take full control of Finder's right-click menu on macOS.**
+**A macOS launcher, plugin host and Finder context-menu manager — with local MCP access.**
 
 English · [简体中文](README.zh.md)
 
-Build plugins or contribute to the host: [Developer docs](docs/README.md) · [Notifications and buttons](docs/plugin-notifications.md)
+[Plugins](https://github.com/AnyWhereTools/anywhere-bazaar) · [Developer docs](docs/README.md) · [Local MCP guide (Chinese)](docs/mcp.zh.md) · [Releases](https://github.com/AnyWhereTools/AnyWhere/releases)
 
-AnyWhere is a script-first, open-source (MIT) menu-bar app that lets you add your own
-right-click actions, manage the system menu items other tools can't touch, and install
-community “extension packs” — all without repeating permission prompts. Distributed as a
-Developer ID app (non-sandboxed main app + sandboxed Finder Sync extension); requires
-macOS 13 Ventura+. UI in **English / 简体中文**.
+AnyWhere brings apps, scripts and plugin tools into one keyboard-driven workspace. Search
+with `Control+Option+Space`, open custom tool pages, manage Finder actions, and let MCP clients
+call explicitly authorized plugin commands. Plugins can add persistent data, reminders and
+search-home summaries without building a native app.
+
+Open source under **MIT**, built with **SwiftUI + Finder Sync + WebKit**, for **macOS 13 Ventura+**.
+The main app runs outside the sandbox; the Finder extension is sandboxed. UI in **English / 简体中文**.
+The features below describe the current source; check release notes for availability in a packaged build.
 
 ---
 
-## Why AnyWhere
+## What you can do
 
-Most right-click tools on the Mac (右键超人 / MouseBoost / Service Station …) ship through the
-sandboxed App Store, so they **can only manage menu items they inject themselves**. AnyWhere
-ships outside the sandbox (Developer ID), which unlocks things the sandbox makes structurally
-impossible:
+| Area | Capabilities |
+| --- | --- |
+| Launcher | Find apps, plugins and local shortcuts by name, alias, pinyin or initials |
+| Plugin tools | HTML/CSS/JS pages, independent windows, local storage and cancellable backends |
+| Finder | Editable zsh actions, system Quick Actions / Services visibility and third-party extension toggles |
+| Reminders and summaries | Plugin-defined notifications or reminder panels, plus pinned search-home summaries |
+| Automation | Same-pack workflows and opt-in plugin commands through a bundled stdio MCP server |
 
-| Capability | Sandboxed tools | AnyWhere |
-|------------|-----------------|----------|
-| Inject custom script actions | partial | ✓ script-first, fully configurable |
-| Toggle system Quick Actions / Services | ✗ | ✓ via the `pbs` domain |
-| Enable/disable third-party Finder extensions | ✗ | ✓ via `pluginkit` |
-| Install extension packs (Git repos or local folders) | ✗ | ✓ see the [pack spec](docs/pack-spec.md) |
+**Script-first and extensible.** Even built-in Finder actions are editable zsh scripts.
+Import reviewed plugins from Git repositories or local folders, then enable only the entries you need.
 
-**The core idea is script-first.** Even the built-ins are editable zsh scripts — a preset *is*
-a factory script you can edit, delete, or restore at any time.
+## Get started
+
+1. [Build and launch AnyWhere](#install--build-from-source), then complete onboarding. Enable the Finder extension to use context-menu actions.
+2. Open **Extension Packs** and browse the [Bazaar](https://github.com/AnyWhereTools/anywhere-bazaar), or import a Git URL / local folder. Review the files before installing.
+3. Enable the desired **Search** or **Context Menu** entries in pack details; these switches are independent and start disabled.
+4. Press `Control+Option+Space`, search for a tool, and press Return. Configure plugin settings, summaries or MCP access as needed.
+
+### Plugins to try
+
+| Plugin | Use it for |
+| --- | --- |
+| [Todo](https://github.com/AnyWhereTools/anywhere-todo) | Task lists, deadlines and reminders |
+| [JSON Tools](https://github.com/AnyWhereTools/anywhere-json-tools) | JSON editing, formatting and persistent drafts |
+| [Quicklinks](https://github.com/AnyWhereTools/anywhere-quicklinks) | Searchable websites and URL templates |
+| [Tool Chain Demo](https://github.com/AnyWhereTools/anywhere-tool-chain-demo) | Interactive response → node selection → TypeScript workflows |
 
 ---
 
@@ -68,7 +83,7 @@ switches; both start disabled after import.
 
 Pages can persist pack data, write to the clipboard and run cancellable scripts or bundled
 Go/Rust backends without a Node runtime. See the [UI guide](docs/plugin-ui.md) and importable
-[Text Toolbox](examples/ui-tool-pack/README.md). These features require schema 4; versions 1–3 remain supported.
+[Text Toolbox](examples/ui-tool-pack/README.md). UI pages require schema 4 or later; versions 1–3 remain supported for earlier pack features.
 
 Search also supports full pinyin and initials, enabled custom shortcuts, same-pack workflows
 and installed applications. **Shortcuts** lets you create local scripts with names, keywords
@@ -84,6 +99,30 @@ Try [Clipboard JSON workflows](examples/tool-panel-demo/README.md) for real scri
 pages. Import and review the pack, then enable each desired tool/workflow in pack details.
 These workflows currently reference tools **within one pack**. Cross-developer, cross-pack
 composition is [planned, not implemented](docs/cross-pack-workflows.md).
+
+### Reminders and search-home summaries
+
+Plugins can schedule macOS notifications or AnyWhere reminder panels, with buttons such as
+Snooze and Complete. The plugin owns task state and button behavior; AnyWhere handles scheduling
+and presentation. Panels require AnyWhere to stay running, but the plugin page may close.
+See the [notification guide](docs/plugin-notifications.md).
+
+Plugins with a `summary.html` page can be pinned to the search home. Summaries read their own
+plugin's stored data; clicking a summary opens the full tool. See the
+[summary guide (Chinese)](docs/plugin-summaries.zh.md).
+
+### Local MCP and plugin commands
+
+The bundled `anywhere-mcp` helper exposes explicitly authorized plugin commands to MCP clients
+over stdio. Enable **Allow calls through AnyWhere MCP** in the plugin's settings and register
+`/Applications/AnyWhere.app/Contents/MacOS/anywhere-mcp` as your client's server executable
+(adjust the path if installed elsewhere). **AnyWhere must remain running.**
+
+The `list` tool discovers authorized plugins and their operation schemas. Plugins using
+manifest schema 5 declare which commands they export; an installed plugin must include these
+declarations to be callable. Revoking access blocks later calls. This is local
+integration, not a remote service; other processes running as the same macOS user can also
+call authorized functionality. See the [MCP setup and command contract (Chinese)](docs/mcp.zh.md).
 
 ### Importing packs
 
@@ -155,7 +194,7 @@ with zero external assumptions. All use built-in macOS CLIs. View/edit under
 
 Specialized actions can be added as **optional extension packs**. These upstream projects
 are references for authors; adapt their scripts to the `ANYWHERE_*` environment before
-importing them. AnyWhere discovers packs tagged `anywhere-pack`:
+importing them. Current plugin discovery uses the [Bazaar registry](https://github.com/AnyWhereTools/anywhere-bazaar):
 
 - **[Developer Pack](https://github.com/Hibrielle/menumate-dev-pack)** — Open in Terminal / Editor (honors your default terminal/editor).
 - **[Image Pack](https://github.com/Hibrielle/menumate-image-pack)** — Convert Image ▸ png/jpeg/heic/tiff.
@@ -165,7 +204,10 @@ importing them. AnyWhere discovers packs tagged `anywhere-pack`:
 
 ## Install / build from source
 
-Requirements: macOS 13+, Xcode 15+ (String Catalogs), Homebrew (for `xcodegen`).
+Requirements: macOS 13+, Xcode 16.3+ (Swift 6.1 for the MCP helper SDK), Homebrew (for `xcodegen`).
+
+Packaged downloads, when available, are listed under [GitHub Releases](https://github.com/AnyWhereTools/AnyWhere/releases).
+Check each release's signing and notarization notes before installing.
 
 ```bash
 make bootstrap   # install xcodegen + copy the local signing config
@@ -178,7 +220,8 @@ make run         # build + launch
 Then enable the Finder extension (onboarding links you to System Settings, or
 `pluginkit -e use -i com.anywhere.app.FinderExtension`) and grant the one-time permissions.
 
-A signed/notarized release build is produced by `make release` / the GitHub release workflow —
+A signed/notarized release build requires Developer ID credentials. The GitHub release workflow
+also supports an explicitly selected ad-hoc build without notarization or automatic updates —
 see [docs/RELEASING.md](docs/RELEASING.md).
 
 > **Running an unsigned/ad-hoc local build:** a `make build` (or a dmg built without a Developer ID)
@@ -210,9 +253,10 @@ Every script (preset or pack) is run under `/bin/zsh` with:
 
 | Target | What | Sandbox | Responsibility |
 |--------|------|---------|----------------|
-| AnyWhere | SwiftUI menu-bar app (`LSUIElement`) | No | config, action execution, system-menu management, packs |
+| AnyWhere | SwiftUI menu-bar app (`LSUIElement`) | No | launcher, plugin UI, reminders, action execution, system-menu management, packs |
 | FinderExtension | `FIFinderSync` extension | Yes | draw the menu, forward clicks |
-| AnyWhereCore | local Swift package | — | models, config codec, rule matching (unit-tested) |
+| AnyWhereMCP | bundled `anywhere-mcp` executable | No | stdio MCP bridge to authorized host commands |
+| AnyWhereCore | local Swift package | — | models, config, rule matching, command validation and local IPC (unit-tested) |
 
 The extension reads **no files**: the main app pushes a menu snapshot over
 `DistributedNotificationCenter` (chunked). No App Group container — this is what eliminates the
@@ -221,6 +265,8 @@ repeating macOS permission prompts.
 ## Docs & contributing
 
 - [UI, windows and workflow SDK](docs/plugin-ui.md) · [TypeScript declarations](docs/sdk/anywhere.d.ts)
+- [Notifications and reminder buttons](docs/plugin-notifications.md) · [Host services](docs/plugin-services.md)
+- [Local MCP and plugin commands (Chinese)](docs/mcp.zh.md) · [Search-home summaries (Chinese)](docs/plugin-summaries.zh.md)
 - [Script workflow demo](examples/tool-panel-demo/README.md) · [Interactive tool-chain demo](examples/tool-chain-demo/README.md)
 - [Cross-pack workflow design and implementation plan — not implemented](docs/cross-pack-workflows.md)
 - [Extension Pack Specification](docs/pack-spec.md) · [basic example](examples/example-pack/) · [Xlog Decoder pack](examples/xlog-decoder-pack/)

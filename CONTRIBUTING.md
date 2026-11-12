@@ -10,7 +10,7 @@ pure-logic Swift package at its core.
 Plugin authors should start with [Developer docs](docs/README.md) for the quickstart,
 SDK, notifications, examples and debugging. The following covers host development.
 
-Requirements: macOS 13+, Xcode 16.3+ (Swift 6.1 for the MCP helper SDK), Homebrew (for `xcodegen`).
+Requirements: macOS 13+, Xcode 26+ (macOS 26 SDK for the optional Liquid Glass background), Homebrew (for `xcodegen`).
 
 ```bash
 make bootstrap   # installs xcodegen, copies Local.xcconfig from the template

@@ -4,6 +4,8 @@
 
 AnyWhere 支持经过 **Developer ID 签名和公证的 `.dmg`**，使用 **Sparkle** 自动更新；也可明确选择未经公证、不提供自动更新的 ad-hoc 构建。本文说明首次配置和每次发布的操作。
 
+构建需要 Xcode 26 或更新版本（CI 使用 `macos-26`）：可选的 Liquid Glass 背景需要 macOS 26 SDK。应用的最低运行版本仍为 macOS 13。
+
 分发需要付费的 **Apple Developer Program** 会员资格和 **Developer ID Application** 证书。用于本地开发的 Apple Development 证书不能替代分发签名和公证所需的证书。
 
 本文中的钥匙串用于开发者签名和发布工具；应用内的插件密码配置使用[本地加密存储](pack-spec.zh.md#本地保存加密与备份)，不依赖钥匙串。

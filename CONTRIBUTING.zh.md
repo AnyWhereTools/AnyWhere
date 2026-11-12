@@ -8,7 +8,7 @@ AnyWhere 由 SwiftUI 菜单栏应用、Finder Sync 扩展和共享的 Swift Pack
 
 ## 开发环境
 
-要求 macOS 13+、Xcode 16.3+（MCP 辅助程序 SDK 需要 Swift 6.1）以及 Homebrew（用于安装 `xcodegen`）。
+要求 macOS 13+、Xcode 26+（可选的 Liquid Glass 背景需要 macOS 26 SDK）以及 Homebrew（用于安装 `xcodegen`）。
 
 ```bash
 make bootstrap   # 安装 xcodegen，从模板创建 Local.xcconfig

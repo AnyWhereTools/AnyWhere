@@ -6,6 +6,9 @@ AnyWhere supports a **Developer ID-signed, notarized `.dmg`** with **Sparkle** a
 or an explicitly selected ad-hoc build without notarization or automatic updates.
 This document covers the one-time setup and the per-release flow.
 
+Build with Xcode 26 or newer (CI uses `macos-26`): the optional Liquid Glass background
+needs the macOS 26 SDK. The app's minimum runtime version remains macOS 13.
+
 Keychain use below belongs to developer signing and release tooling. Plugin password settings
 use [local encrypted storage](pack-spec.md#settings--plugin-configuration-schemaversion-2-or-later).
 

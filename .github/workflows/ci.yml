@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    runs-on: macos-15   # Xcode 16 default — xcodegen emits project format 77 which older Xcode can't open
+    runs-on: macos-26   # The launcher's optional Liquid Glass background requires the macOS 26 SDK.
     steps:
       - uses: actions/checkout@v4
 
